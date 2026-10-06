@@ -27,7 +27,7 @@ jobs:
           fetch-depth: 0 # the "tag is on main" check below needs history
 
       # No npm cache here on purpose: release builds start from the lockfile only.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
