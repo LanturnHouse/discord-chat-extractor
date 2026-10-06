@@ -2,8 +2,35 @@
   "name": "discord-chat-extractor",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
+  "author": "LanturnHouse",
   "type": "module",
   "description": "Chrome extension that exports Discord chat history (servers, channels, DMs) to TXT / Markdown / HTML / Excel / CSV / JSON.",
+  "homepage": "https://github.com/LanturnHouse/discord-chat-extractor#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LanturnHouse/discord-chat-extractor.git"
+  },
+  "bugs": {
+    "url": "https://github.com/LanturnHouse/discord-chat-extractor/issues"
+  },
+  "keywords": [
+    "discord",
+    "chrome-extension",
+    "manifest-v3",
+    "export",
+    "backup",
+    "archive",
+    "chat-history",
+    "html",
+    "markdown",
+    "csv",
+    "xlsx",
+    "json"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
@@ -13,7 +40,8 @@
     "icons": "node scripts/generate-icons.mjs",
     "verify": "node scripts/verify-dist.mjs",
     "pack": "npm run build && node scripts/pack.mjs",
-    "e2e": "node e2e/real-extension.mjs"
+    "e2e": "node e2e/real-extension.mjs",
+    "licenses": "node scripts/third-party-licenses.mjs"
   },
   "dependencies": {
     "fflate": "^0.8.3",
@@ -34,5 +62,8 @@
     "typescript": "^7.0.2",
     "vite": "^8.3.3",
     "vitest": "^5.0.3"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
   }
 }

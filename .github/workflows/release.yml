@@ -1,0 +1,132 @@
+name: Release
+
+# Push a tag such as v0.1.0 (after bumping "version" in package.json AND public/manifest.json on main) and this workflow
+# builds the extension, checks it, zips it and publishes a GitHub Release with the ZIP and its SHA-256 attached.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish the release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write # create the release and upload its assets
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the "tag is on main" check below needs history
+
+      # No npm cache here on purpose: release builds start from the lockfile only.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check the tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::The tag '$tag' is not of the form vMAJOR.MINOR.PATCH."
+            exit 1
+          fi
+          version="$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")"
+          if [ "${tag#v}" != "$version" ]; then
+            echo "::error::The tag $tag does not match the version in package.json ($version). Bump package.json and public/manifest.json, commit, and tag again."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::The tag $tag does not point at a commit on main."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      # `npm run pack` = build (typecheck + vite) -> verify dist/ -> zip. --strict: a missing LICENSE / PRIVACY.md /
+      # DISCLAIMER.md / ... fails the release instead of only warning.
+      - name: Build, verify and pack
+        run: npm run pack -- --strict
+
+      - name: Checksum
+        id: zip
+        shell: bash
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          set -euo pipefail
+          zip="discord-chat-extractor-v${VERSION}.zip"
+          test -f "$zip"
+          sha="$(sha256sum "$zip" | cut -d' ' -f1)"
+          # "<hash>  <file>" is what `sha256sum -c` reads
+          printf '%s  %s\n' "$sha" "$zip" | tee "$zip.sha256"
+          echo "name=$zip" >> "$GITHUB_OUTPUT"
+          {
+            echo "### $zip"
+            echo
+            echo '```text'
+            cat "$zip.sha256"
+            echo '```'
+            echo
+            echo '<details><summary>ZIP contents</summary>'
+            echo
+            echo '```text'
+            unzip -l "$zip"
+            echo '```'
+            echo
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create the GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ZIP: ${{ steps.zip.outputs.name }}
+        run: |
+          set -euo pipefail
+          repo_url="https://github.com/${GITHUB_REPOSITORY}"
+          notes="${RUNNER_TEMP}/release-notes.md"
+          {
+            cat <<EOF
+          ## 설치 / Install
+
+          1. \`${ZIP}\` 을 받아 압축을 풉니다. / Download \`${ZIP}\` and extract it.
+          2. 크롬에서 \`chrome://extensions\` 를 열고 **개발자 모드** 를 켠 뒤, **압축해제된 확장 프로그램을 로드합니다** 로 압축 푼 폴더를 선택합니다. / Open \`chrome://extensions\`, turn on **Developer mode**, click **Load unpacked** and pick the extracted folder.
+
+          사용법 / Usage: [한국어](${repo_url}/blob/${GITHUB_REF_NAME}/docs/USAGE.md) · [English](${repo_url}/blob/${GITHUB_REF_NAME}/docs/USAGE.en.md)
+
+          > [!WARNING]
+          > 비공식 도구이며 Discord 이용약관에 어긋날 수 있어 계정이 제재될 가능성이 있습니다. 사용 전에 [DISCLAIMER](${repo_url}/blob/${GITHUB_REF_NAME}/DISCLAIMER.md) 를 읽어 주세요.
+          > This is an unofficial tool and may violate Discord's Terms of Service, so your account could be restricted. Read the [DISCLAIMER](${repo_url}/blob/${GITHUB_REF_NAME}/DISCLAIMER.md) before using it.
+
+          ## SHA-256
+
+          \`\`\`text
+          $(cat "${ZIP}.sha256")
+          \`\`\`
+
+          ---
+
+          EOF
+          } > "$notes"
+          # --notes-file text comes first, the generated "What's Changed" list is appended to it.
+          gh release create "$GITHUB_REF_NAME" "$ZIP" "${ZIP}.sha256" \
+            --verify-tag \
+            --title "Discord Chat Extractor ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --notes-file "$notes"

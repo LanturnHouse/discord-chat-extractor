@@ -91,7 +91,11 @@ try {
   await sleep(1500);
 
   // 3) token capture from a Discord-initiated page
-  const captured = await evalIn(swSession, `chrome.storage.session.get('dce.token').then(v => v['dce.token'] === ${JSON.stringify(PAGE_TOKEN)})`);
+  let captured = false;
+  for (let i = 0; i < 40 && !captured; i++) {
+    captured = await evalIn(swSession, `chrome.storage.session.get('dce.token').then(v => v['dce.token'] === ${JSON.stringify(PAGE_TOKEN)})`);
+    if (!captured) await sleep(250);
+  }
   check('token captured from the Discord page request (the Bearer request was ignored)', captured === true);
   const local = await evalIn(swSession, `chrome.storage.local.get(null).then(v => JSON.stringify(v).includes('FAKEPG'))`);
   check('token is NOT in chrome.storage.local', local === false);
@@ -162,8 +166,8 @@ try {
   await dom(`[...document.querySelectorAll('.app-topbar button')].find(e => /다운로드|Download/.test(e.textContent || ''))?.click()`);
   const done = await waitFor(app, `/완료|complete|saved/i.test(document.querySelector('[role="dialog"]')?.innerText || '')`, 20000);
   check('export finished in the UI', !!done);
-  await sleep(1500);
-  const files = fs.readdirSync(downloads);
+  for (let i = 0; i < 60 && !(fs.readdirSync(downloads).some((f) => /\.html$/.test(f)) && !fs.readdirSync(downloads).some((f) => f.endsWith('.crdownload'))); i++) await sleep(250);
+  const files = fs.readdirSync(downloads).filter((f) => /\.(html|zip)$/.test(f));
   check('a single .html file was downloaded (one channel = no ZIP)', files.length === 1 && files[0].endsWith('.html'), files.join(', '));
   const afterAll = requests.filter((r) => /\/channels\/301\/messages/.test(r.path) && /after=/.test(r.path));
   check('export paged forward with after= (full history, 250 msgs = 3 pages)', afterAll.length === 3, `after-requests=${afterAll.length}`);

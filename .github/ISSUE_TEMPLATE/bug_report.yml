@@ -1,0 +1,121 @@
+name: 버그 신고 / Bug report
+description: 확장 프로그램이 잘못 동작하거나 내보낸 결과가 이상할 때 / Something does not work, or an export looks wrong
+title: '[Bug] '
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > **경고 / WARNING**
+        > **Discord 토큰, 로그인 정보, 실제 대화 내용, 이름, 이메일, 내보낸 파일은 절대 붙여 넣지 마세요.** 스크린샷에 실제 서버·채널·DM이 보이면 가리거나 데모 모드(가상 데이터) 화면으로 다시 찍어 주세요.
+        > **Never paste your Discord token, login details, real messages, names, e-mail addresses or exported files here.** If a screenshot shows real servers, channels or DMs, blur it or reproduce the problem in demo mode (fake data) and screenshot that instead.
+        >
+        > 보안 취약점은 이슈가 아니라 [비공개 보안 권고](https://github.com/LanturnHouse/discord-chat-extractor/security/advisories/new)로 알려 주세요. / Report security vulnerabilities through a [private security advisory](https://github.com/LanturnHouse/discord-chat-extractor/security/advisories/new), not here.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 무슨 문제인가요? / What is the problem?
+      description: 한두 문장으로 요약해 주세요. / One or two sentences.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 재현 방법 / Steps to reproduce
+      description: 어떤 순서로 눌렀는지 적어 주세요. 선택한 형식·기간·메시지 개수도 알려 주세요. / List what you clicked, in order, including the format, date range and message count you chose.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대한 동작 / Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 실제 동작 / Actual behavior
+      description: 오류 메시지가 있으면 그대로 적어 주세요(개인정보는 지우고). / Include the error message if there is one (with personal data removed).
+    validations:
+      required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: 확장 프로그램 버전 / Extension version
+      description: '`chrome://extensions` 의 Discord Chat Extractor 카드에 적힌 버전입니다. / The version shown on the Discord Chat Extractor card at `chrome://extensions`.'
+      placeholder: '0.1.0'
+    validations:
+      required: true
+
+  - type: input
+    id: chrome-version
+    attributes:
+      label: Chrome 버전 / Chrome version
+      description: '`chrome://settings/help` 에서 확인할 수 있습니다. / Shown at `chrome://settings/help`.'
+      placeholder: '예 / e.g. 140.0.0.0'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: 운영체제 / Operating system
+      options:
+        - Windows 11
+        - Windows 10
+        - macOS
+        - Linux
+        - ChromeOS
+        - 기타 / Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: format
+    attributes:
+      label: 내보내기 형식 / Export format
+      description: 내보내기와 관련 없는 문제라면 "해당 없음"을 고르세요. / Choose "Not applicable" if the problem is not about an export.
+      options:
+        - 해당 없음 / Not applicable
+        - HTML
+        - TXT
+        - Markdown
+        - Excel (.xlsx)
+        - CSV
+        - JSON
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: demo-mode
+    attributes:
+      label: 데모 모드 / Demo mode
+      description: '`chrome-extension://<확장 프로그램 ID>/app.html?mock=1` 을 열면 가상 데이터로 같은 화면을 쓸 수 있습니다. 재현되면 이슈를 훨씬 빨리 확인할 수 있어요. / Opening `chrome-extension://<extension id>/app.html?mock=1` gives you the same screens with fake data. A problem that also happens there is much easier to investigate.'
+      options:
+        - label: 데모 모드에서도 같은 문제가 재현됩니다 / I can reproduce it in demo mode too
+          required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 추가 정보 / Additional context
+      description: 콘솔 오류(F12 > Console), 가려진 스크린샷 등. 토큰이나 대화 내용이 들어 있지 않은지 다시 확인해 주세요. / Console errors (F12 > Console), redacted screenshots, and so on. Check once more that no token or message content is in there.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: privacy-confirmation
+    attributes:
+      label: 확인 / Confirmation
+      options:
+        - label: 이 신고에서 토큰, 비공개 대화, 개인정보를 모두 지웠습니다 / I have removed tokens, private messages and personal data from this report
+          required: true

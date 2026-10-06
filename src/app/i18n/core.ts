@@ -37,7 +37,7 @@ export function getStrings<S extends StringDict>(table: StringTable<S>, locale: 
 /**
  * `prefs.locale` + the browser language -> the language actually used. An explicit preference always wins. For 'auto':
  * 'ko*' => 'ko', any other known language => 'en', and no language information at all => 'ko' (the product default,
- * docs/DECISIONS.md #28).
+ * docs/DECISIONS.md #33).
  */
 export function resolveLocale(pref: 'auto' | Locale, browserLanguage: string | null | undefined): Locale {
   if (pref !== 'auto') return pref;

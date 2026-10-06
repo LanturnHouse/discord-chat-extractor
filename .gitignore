@@ -1,9 +1,45 @@
+# Dependencies and build output
 node_modules/
 dist/
-*.zip
-*.log
 .vite/
+*.tsbuildinfo
 coverage/
-.DS_Store
+
+# Release artifacts (made by `npm run pack` / the release workflow, never committed)
+*.zip
+*.sha256
+
+# End-to-end run output: screenshots, downloads and a throw-away Chrome profile (`npm run e2e` writes here)
 .e2e/
 e2e/.tmp/
+
+# Secrets and credentials. Discord tokens must never end up in this repository.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crx
+
+# Exported chat history is private data. Exports belong outside the repository; tests use fake data only.
+*.xlsx
+*.csv
+/exports/
+/Discord Export*
+# ...except sample files of the built-in demo data that the documentation may ship
+!/docs/**/*.xlsx
+!/docs/**/*.csv
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editors, OS and local tool settings
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+*.swp
+.claude/settings.local.json

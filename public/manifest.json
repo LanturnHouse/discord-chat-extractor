@@ -4,6 +4,7 @@
   "short_name": "DC Extractor",
   "version": "0.1.0",
   "description": "Export your Discord chat history (servers, channels, DMs) to TXT, Markdown, HTML, Excel, CSV or JSON.",
+  "homepage_url": "https://github.com/LanturnHouse/discord-chat-extractor",
   "minimum_chrome_version": "116",
   "action": {
     "default_title": "Discord Chat Extractor",

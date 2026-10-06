@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch / pull request makes the older run pointless.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Typecheck, test, build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # The project is developed on Windows; Linux catches case-sensitivity and path-separator mistakes.
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # Static checks on dist/: manifest references, extension-page CSP, no remote resources, no eval / workers.
+      - name: Verify the built extension
+        run: npm run verify
+
+  licenses:
+    name: Check third-party licenses
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Fails on a non-permissive license in the shipped dependency tree, or when THIRD_PARTY_LICENSES.md is stale
+      # (fix: run "npm run licenses" and commit the result).
+      - name: Check licenses
+        run: npm run licenses -- --check
+
+  audit:
+    name: Audit runtime dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Reads package-lock.json, nothing is installed. Only the runtime dependencies are bundled into the extension.
+      - name: npm audit (production dependencies, high and above)
+        run: npm audit --omit=dev --audit-level=high

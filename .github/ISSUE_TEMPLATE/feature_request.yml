@@ -1,0 +1,59 @@
+name: 기능 제안 / Feature request
+description: 새 기능이나 개선 아이디어 / An idea for a new feature or an improvement
+title: '[Feature] '
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        제안하기 전에 [docs/DECISIONS.md](https://github.com/LanturnHouse/discord-chat-extractor/blob/main/docs/DECISIONS.md) 를 한번 훑어봐 주세요. 이 도구는 **읽기 전용 내보내기**에 집중하고 있어서, 메시지 입력창·검색·프로필처럼 의도적으로 뺀 기능이 있습니다.
+        Please skim [docs/DECISIONS.md](https://github.com/LanturnHouse/discord-chat-extractor/blob/main/docs/DECISIONS.md) first. This tool is **read-only and export-focused**, and some things (a message composer, search, profiles, ...) are left out on purpose.
+
+        > **경고 / WARNING**: 토큰이나 실제 대화 내용은 붙여 넣지 마세요. / Do not paste tokens or real conversation content.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 해결하고 싶은 문제 / The problem you want to solve
+      description: 기능보다 먼저, 어떤 상황에서 무엇이 불편한지 적어 주세요. / Describe the situation and what is hard today, before describing a solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 제안하는 방법 / Proposed solution
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 고려한 다른 방법 / Alternatives considered
+      description: 지금 쓰고 있는 우회 방법도 좋습니다. / Workarounds you use today are welcome too.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 관련 영역 / Area
+      options:
+        - 내보내기 형식 / Export formats
+        - 내보내기 범위(기간·개수) / Export scope (dates, count)
+        - 화면(UI) / User interface
+        - 언어 / Languages
+        - 문서 / Documentation
+        - 기타 / Other
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: 확인 / Confirmation
+      options:
+        - label: 비슷한 이슈가 이미 있는지 검색해 보았습니다 / I searched the existing issues for a similar request
+          required: true
+        - label: 토큰, 비공개 대화, 개인정보를 포함하지 않았습니다 / This request contains no tokens, private messages or personal data
+          required: true

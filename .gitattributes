@@ -1,3 +1,13 @@
+# LF line endings on every OS, so the Linux and Windows CI jobs (and every contributor) see identical files.
 * text=auto eol=lf
+
 *.png binary
 *.ico binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.zip binary
+
+# Keep GitHub's language statistics and diffs about the code.
+package-lock.json linguist-generated=true

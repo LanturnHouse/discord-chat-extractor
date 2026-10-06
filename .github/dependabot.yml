@@ -1,0 +1,25 @@
+version: 2
+
+updates:
+  # npm: devDependencies (build, test, types) and the 4 runtime dependencies bundled into the extension.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # One pull request for all minor and patch bumps; major versions stay separate so they get a proper review.
+      npm-minor-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
+
+  # The workflows pin actions to major versions (actions/checkout@v4, ...).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      actions-minor-patch:
+        patterns: ['*']
+        update-types: [minor, patch]

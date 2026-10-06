@@ -186,7 +186,7 @@ export const REQUIRED_CSS_SELECTORS = ['.msg', '.md-root'];
 
 /** The required selectors that never occur as a class selector in `css`. */
 export function missingSelectors(css) {
-  return REQUIRED_CSS_SELECTORS.filter((selector) => !new RegExp(`${selector.replace('.', '\.')}(?![\w-])`).test(css));
+  return REQUIRED_CSS_SELECTORS.filter((selector) => !new RegExp(`${selector.replace('.', '\\.')}(?![\\w-])`).test(css));
 }
 
 /** The stylesheets app.html links, so a build in which a source stylesheet was never imported cannot pass as verified. */
