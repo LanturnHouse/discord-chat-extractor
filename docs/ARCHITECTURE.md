@@ -23,36 +23,36 @@ app.html (extension page, host_permissions ⇒ no CORS) ──fetch + Authorizat
 * Only `getToken()` of the Platform touches the token. The token never goes to: logs, URLs, localStorage, chrome.storage.local, exported files, any non-`discord.com/api` origin.
 * Demo mode: `app.html?mock=1` (also when not running inside an extension) uses `MockDiscordClient` — no Discord, no token. Used for development, tests and "try the UI".
 
-## Module map (ownership boundaries — stay inside your own files)
+## Module map
 ```
-app.html                         entry (exists)
-public/manifest.json             exists (MV3). background.js is built from src/background/index.ts
-src/shared/constants.ts          exists. UI_PAGE_SIZE=200, API_MESSAGE_LIMIT=100, storage keys
+app.html                         entry
+public/manifest.json             MV3 manifest. background.js is built from src/background/index.ts
+src/shared/constants.ts          UI_PAGE_SIZE=200, API_MESSAGE_LIMIT=100, storage keys
 src/background/index.ts          service worker: token capture + action click → open app tab
-src/app/platform/                types.ts (exists), chrome.ts, dev.ts, index.ts (getPlatform())
+src/app/platform/                types.ts, chrome.ts, dev.ts, index.ts (getPlatform())
 src/app/main.tsx, App.tsx        bootstrap + shell
 src/app/state/                   zustand store(s) + data-loading actions
 src/app/i18n/                    defineStrings({ ko, en }) + useStrings(table) — each UI area owns its own strings file (type-checked: ko/en keys must match)
 src/app/components/rail|sidebar|chat|topbar|message|common   ServerRail, Sidebar (channel tree + DM list), ChatPane/MessageList, TopBar (selection chip, download split button, options, progress dialog), MessageItem & friends, shared primitives (Icons, Checkbox, …); Onboarding.tsx
 src/app/state/                   zustand store split per concern (boot, navigation, trees, messages, selection, exportJob) + typed hooks/selectors; UI imports only from '@/app/state'
 src/app/styles/                  theme.css (tokens), base.css, layout.css, markdown.css, message.css (plain CSS + custom properties; no CSS-in-JS). markdown.css + message.css are ALSO embedded in HTML exports.
-src/lib/discord/types.ts         exists — raw API types (Snowflake = string!)
-src/lib/discord/client.ts        exists — DiscordClient interface + DiscordApiError
-src/lib/discord/model.ts         exists — GuildNode / ChannelNode / GuildTree / DmNode view models
-src/lib/discord/snowflake.ts     exists — BigInt-safe helpers
+src/lib/discord/types.ts         raw API types (Snowflake = string!)
+src/lib/discord/client.ts        DiscordClient interface + DiscordApiError
+src/lib/discord/model.ts         GuildNode / ChannelNode / GuildTree / DmNode view models
+src/lib/discord/snowflake.ts     BigInt-safe helpers
 src/lib/discord/api.ts           LiveDiscordClient (fetch, rate limits, retries, abort)
 src/lib/discord/cdn.ts           avatar / guild icon / emoji / sticker URL builders
 src/lib/discord/permissions.ts   best-effort channel visibility (roles + overwrites)
 src/lib/discord/tree.ts          raw channels → GuildTree, raw DM channels → DmNode[], GuildSummary → GuildNode, toExportTarget
 src/lib/discord/pagination.ts    fetchMessagePage (UI paging) — built on client.getMessages
 src/lib/discord/mock/            MockDiscordClient + deterministic fixtures
-src/lib/markdown/                types.ts (exists), parse.ts, renderReact.tsx, renderHtml.ts, renderText.ts, index.ts
+src/lib/markdown/                types.ts, parse.ts, renderReact.tsx, renderHtml.ts, renderText.ts, index.ts
 src/lib/message/                 message semantics shared by UI + exports (system message text, attachment kinds, formatting, display names)
-src/lib/export/                  types.ts (exists), runner.ts, zip.ts, filename.ts, download.ts, xlsx.ts, formats/*.ts, index.ts
+src/lib/export/                  types.ts, runner.ts, zip.ts, filename.ts, download.ts, xlsx.ts, formats/*.ts, index.ts
 tests/                           vitest specs mirroring src/lib paths
 ```
 
-## Core contracts (already in the repo — do not change signatures without updating every consumer; if you must, append a note to `docs/CONTRACT-CHANGES.md`)
+## Core contracts (change a signature only together with every consumer of it)
 * `DiscordClient` (`src/lib/discord/client.ts`). `getMessages()` returns **raw API order: newest first**, ≤100/page.
 * `fetchMessagePage(client, channelId, { before?, size = UI_PAGE_SIZE }, signal?)` → `{ messages: Message[] /* ascending: oldest→newest */, hasMore: boolean }`.
   Chains sequential 100-sized requests (cursor = oldest id so far) until `size` reached or the channel start (a short page) is hit.
@@ -84,7 +84,7 @@ Cozy layout; consecutive messages by the same author within 7 minutes collapse i
 Selected-for-export affordance: Discord-style rounded checkbox (brand blue when checked, dash when partial) at the right end of channel / category / DM rows (overlay, so names keep their Discord alignment); visible on hover/focus or when checked. Server rail icons get a top-left checkbox + a bottom-right count badge.
 
 ## Quality bar
-* `npm run typecheck`, `npm test` and `npm run build` must stay green after every agent's work (only fix failures in YOUR files; if a failure is in someone else's file, report it).
+* `npm run typecheck`, `npm test` and `npm run build` must stay green after every change.
 * Every pure module gets unit tests (`tests/…`). Network is always mocked in tests (never hit Discord).
 * No `any` unless commented why. No dead code, no TODO placeholders in finished modules. Code comments only where the *why* is non-obvious.
 * Accessibility basics: real `<button>`s, `aria-label`s on icon buttons, `role="tree"`-ish semantics not required, but keyboard focusability + visible focus ring are.
