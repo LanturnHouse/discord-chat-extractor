@@ -22,7 +22,7 @@ jobs:
     permissions:
       contents: write # create the release and upload its assets
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # the "tag is on main" check below needs history
 
