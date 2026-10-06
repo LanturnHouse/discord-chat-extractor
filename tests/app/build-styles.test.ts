@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
@@ -115,7 +115,7 @@ const mainFile = join(src, 'app', 'main.tsx');
 
 /** The files that have a plain import of `sheet`, with that import removed (to prove what the checks say without it). */
 function withoutImportsOf(sheet: string): Sources {
-  const name = sheet.slice(sheet.lastIndexOf('\\') + 1).replace(/\./g, '\\.');
+  const name = basename(sheet).replace(/\./g, '\\.');
   const plainImport = new RegExp(`import\\s+['"][^'"]*${name}['"];?[ \\t]*\\r?\\n`, 'g');
   const overrides = new Map<string, string>();
   for (const { from, asText } of importersOf().get(sheet) ?? []) {
