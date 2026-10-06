@@ -17,8 +17,6 @@ export const topbarStrings = defineStrings({
 
     // per-channel settings (the gear in the selection list)
     channelSettings: (name: string) => `${name} 내보내기 설정`,
-    useCommonSettings: '공통 설정 사용',
-    commonSettingsNow: (summary: string) => `공통 설정: ${summary}`,
     resetToCommon: '공통 설정으로 되돌리기',
     settingsNeedAttention: '설정을 확인하세요',
 
@@ -122,8 +120,6 @@ export const topbarStrings = defineStrings({
     ownSettingsCount: (count, fmt) => `${fmt(count)} with own settings`,
 
     channelSettings: (name) => `Export settings for ${name}`,
-    useCommonSettings: 'Use common settings',
-    commonSettingsNow: (summary) => `Common settings: ${summary}`,
     resetToCommon: 'Reset to common settings',
     settingsNeedAttention: 'Check these settings',
 

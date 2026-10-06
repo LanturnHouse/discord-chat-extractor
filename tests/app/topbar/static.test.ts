@@ -106,7 +106,6 @@ describe('topbar strings', () => {
       'countPerChannel',
       'limitEmpty',
       'limitWhole',
-      'useCommonSettings',
       'resetToCommon',
       'settingsNeedAttention',
       'channelSettingsHint',
@@ -119,9 +118,8 @@ describe('topbar strings', () => {
     expect(ko.countLabel).toBe('메시지 개수');
     expect([en.countAll, en.countLimit]).toEqual(['All', 'Limit to N']);
     expect([ko.countAll, ko.countLimit]).toEqual(['전체', '개수 지정']);
-    expect(en.useCommonSettings).toBe('Use common settings');
-    expect(ko.useCommonSettings).toBe('공통 설정 사용');
     expect(en.resetToCommon).toBe('Reset to common settings');
+    expect(ko.resetToCommon).toBe('공통 설정으로 되돌리기');
     expect(en.channelSettings('general')).toBe('Export settings for general');
     expect(ko.channelSettings('general')).toBe('general 내보내기 설정');
   });
@@ -129,7 +127,6 @@ describe('topbar strings', () => {
   it('the scope functions put their arguments into the text', () => {
     for (const strings of [ko, en]) {
       expect(strings.channelSettings('general')).toContain('general');
-      expect(strings.commonSettingsNow('X-summary')).toContain('X-summary');
       expect(strings.ownSettingsCount(2, fmt)).toContain('2');
       expect(strings.ownSettingsNote(3, fmt)).toContain('3');
       expect(strings.limitRange(100000, fmt)).toContain('100000');
@@ -142,6 +139,16 @@ describe('topbar strings', () => {
       expect(strings.scopeBetween('2026-01-01', '2026-02-02')).toMatch(/2026-01-01.*2026-02-02/);
       expect(strings.scopeBetweenLimit('2026-01-01', '2026-02-02', 42, fmt)).toMatch(/2026-01-01.*2026-02-02.*42/);
     }
+  });
+
+  it('the "use common settings" checkbox and its caption are gone from both languages (the panel opens straight on the editor)', () => {
+    for (const strings of [ko, en]) {
+      expect(Object.keys(strings)).not.toContain('useCommonSettings');
+      expect(Object.keys(strings)).not.toContain('commonSettingsNow');
+    }
+    const panel = sources.get('ChannelScopePanel.tsx') ?? '';
+    expect(panel).not.toMatch(/checkbox|useCommon|commonSettingsNow|topbar-scope__toggle/);
+    expect(css).not.toMatch(/topbar-scope__toggle/);
   });
 
   it('English plurals', () => {

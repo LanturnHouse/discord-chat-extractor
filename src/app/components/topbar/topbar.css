@@ -814,24 +814,6 @@
   background: var(--bg-primary);
 }
 
-.topbar-scope__toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-header);
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.topbar-scope__toggle input {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: var(--brand);
-  cursor: pointer;
-}
-
 .topbar-scope__reset {
   align-self: flex-start;
   padding: 4px 8px;

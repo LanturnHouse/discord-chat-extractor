@@ -87,7 +87,10 @@ function limitMessage(problem: LimitProblem, t: (typeof topbarStrings)['en'], fm
 }
 
 export interface ScopeEditorProps {
-  /** The scope the store holds (always one that can be exported). */
+  /**
+   * The scope the inputs show while `draft` is null: what the store holds (always one that can be exported). For a channel that has
+   * no settings of its own that is the common settings, so the editor follows them until `onScopeChange` gives the channel its own.
+   */
   scope: ExportScope;
   /** The inputs while they hold something that cannot be exported (null = they show `scope`). Lives above this editor so it outlives it. */
   draft: ScopeFields | null;
@@ -103,8 +106,8 @@ export interface ScopeEditorProps {
 }
 
 /**
- * The date range and the message count of ONE scope: the default settings (export options popover) and a channel's own
- * settings (selection list) are edited by this same component. It only ever hands a valid scope to `onScopeChange`; anything
+ * The date range and the message count of ONE scope: the default settings (export options popover) and what a channel is
+ * exported with (selection list) are edited by this same component. It only ever hands a valid scope to `onScopeChange`; anything
  * else (a start after the end, an unfinished date, an empty / decimal / too large count) stays in `draft`, is flagged here,
  * and is what the Download button refuses on, so the inputs and the file that Download produces can never disagree.
  */

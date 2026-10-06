@@ -187,7 +187,10 @@ export function selectHasOverride(state: AppState, channelId: Snowflake): boolea
   return Object.hasOwn(state.exportOverrides, channelId);
 }
 
-/** What a selected channel will be exported with: its own scope, else the default settings (both stable references). */
+/**
+ * What a selected channel will be exported with: its own scope, else the default settings (both stable references). Without a
+ * scope of its own a channel follows the defaults live: the result changes whenever they do.
+ */
 export function selectEffectiveScope(state: AppState, channelId: Snowflake): ExportScope {
   return own(state.exportOverrides, channelId) ?? state.exportSettings;
 }

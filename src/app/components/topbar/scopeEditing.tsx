@@ -18,7 +18,7 @@ export interface ScopeEditing {
   /** The default settings' inputs (null = they show what is stored). */
   globalDraft: ScopeFields | null;
   setGlobalDraft(draft: ScopeFields | null): void;
-  /** Per channel, only for channels that have settings of their own. */
+  /** Per channel, only for selected channels: one that follows the common settings holds a draft just like one with settings of its own. */
   channelDrafts: Readonly<Record<Snowflake, ScopeFields>>;
   setChannelDraft(channelId: Snowflake, draft: ScopeFields | null): void;
   focusRequest: ChannelFocusRequest | null;
@@ -34,23 +34,24 @@ export function useScopeEditing(): ScopeEditing {
   return value;
 }
 
-/** The drafts whose channel still has an override; the very same object when none has to go. */
-function keepOwned(drafts: Record<Snowflake, ScopeFields>, overrides: Readonly<Record<Snowflake, unknown>>): Record<Snowflake, ScopeFields> {
-  const kept = Object.entries(drafts).filter(([channelId]) => Object.hasOwn(overrides, channelId));
+/** The drafts whose channel is still selected; the very same object when none has to go. */
+function keepSelected(drafts: Record<Snowflake, ScopeFields>, selection: Readonly<Record<Snowflake, unknown>>): Record<Snowflake, ScopeFields> {
+  const kept = Object.entries(drafts).filter(([channelId]) => Object.hasOwn(selection, channelId));
   return kept.length === Object.keys(drafts).length ? drafts : Object.fromEntries(kept);
 }
 
 export function ScopeEditingProvider({ children }: { children: ReactNode }): ReactElement {
-  const overrides = useAppStore((state) => state.exportOverrides);
+  const selection = useAppStore((state) => state.selection);
   const [globalDraft, setGlobalDraft] = useState<ScopeFields | null>(null);
   const [drafts, setDrafts] = useState<Record<Snowflake, ScopeFields>>({});
   const [focusRequest, setFocusRequest] = useState<ChannelFocusRequest | null>(null);
 
-  // A channel that left the selection (or went back to the default settings) takes its draft with it, so selecting it again starts clean.
+  // A channel that left the selection takes its draft with it, so selecting it again starts clean. (Going back to the common
+  // settings clears the draft too, but that is the panel's "Reset": a channel that never had settings of its own has drafts as well.)
   useEffect(() => {
-    setDrafts((current) => keepOwned(current, overrides));
-  }, [overrides]);
-  const channelDrafts = useMemo(() => keepOwned(drafts, overrides), [drafts, overrides]);
+    setDrafts((current) => keepSelected(current, selection));
+  }, [selection]);
+  const channelDrafts = useMemo(() => keepSelected(drafts, selection), [drafts, selection]);
 
   const setChannelDraft = useCallback((channelId: Snowflake, draft: ScopeFields | null) => {
     setDrafts((current) => {

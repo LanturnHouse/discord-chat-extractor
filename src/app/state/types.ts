@@ -164,6 +164,8 @@ export interface AppData {
   /**
    * Channels that export with their own scope instead of `exportSettings` (all three fields replace the defaults), by channel id.
    * Only selected channels have one: an entry is dropped together with its channel's selection. Not persisted.
+   * A channel's first valid edit in the selection list creates its entry (a full scope: the defaults of that moment with the edited
+   * field changed); the entry stays until the channel is reset, even when it happens to equal the defaults.
    */
   exportOverrides: Record<Snowflake, ExportScope>;
   exportJob: ExportJob;
