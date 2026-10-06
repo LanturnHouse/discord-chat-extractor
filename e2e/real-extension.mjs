@@ -243,7 +243,9 @@ try {
   }
   check('selection list has a gear button for the channel', gearOpened);
   await sleep(300);
-  await dom('document.querySelector("[role=group][aria-label*=general] input[type=checkbox]")?.click()'); // untick "use common settings"
+  // The gear opens the editor directly: no "use common settings" checkbox, date range + message count right away.
+  const panelFacts = await dom('(() => { const p = document.querySelector("[role=group][aria-label*=general]"); return p ? { checkboxes: p.querySelectorAll("input[type=checkbox]").length, dates: p.querySelectorAll("input[type=date]").length, radios: p.querySelectorAll("[role=radio]").length, resetLink: /공통 설정으로 되돌리기|Reset to common settings/.test(p.textContent) } : null; })()');
+  check('gear opens the editor immediately (no checkbox, 2 date inputs, all/limit control, no reset link before the first edit)', !!panelFacts && panelFacts.checkboxes === 0 && panelFacts.dates === 2 && panelFacts.radios === 2 && panelFacts.resetLink === false, JSON.stringify(panelFacts));
   await sleep(300);
   await dom('(() => { const panel = document.querySelector("[role=group][aria-label*=general]"); [...panel.querySelectorAll("[role=radio]")].find((b) => /^(전체|All)$/i.test(b.textContent.trim()))?.click(); })()');
   await sleep(300);

@@ -622,9 +622,7 @@ export class Scenes {
     await page.click('.topbar-sel__gear', literal(cfg.gearChannel));
     await page.waitFor(`!!document.querySelector('.topbar-scope')`, 5000, 'the channel settings panel');
     await sleep(300);
-    // Untick "use common settings", then "Limit to N" with 200: the row now says what this channel will get.
-    await page.click('.topbar-scope input[type="checkbox"]', ANY);
-    await sleep(300);
+    // The editor is already open (no "use common settings" step): choose "Limit to N" with 200 and the row says what this channel gets.
     await page.click('.topbar-scope [role="radio"]', line(cfg.limitLabel));
     await sleep(200);
     await page.setInput('.topbar-scope .topbar-count__input', 200);
