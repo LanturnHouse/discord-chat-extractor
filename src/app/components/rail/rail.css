@@ -1,0 +1,244 @@
+/* Server rail (.app-rail). Size, grid area and background come from styles/layout.css; colours from theme.css. */
+
+.app-rail {
+  --rail-separator: #35363c;
+  --rail-item-size: 48px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  user-select: none;
+  /* Scrolls with the wheel / keyboard, but never draws a scrollbar over the icons. */
+  scrollbar-width: none;
+}
+
+.app-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.rail__separator {
+  flex: none;
+  width: 32px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--rail-separator);
+}
+
+.rail__list {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rail__entry {
+  flex: none;
+}
+
+/* --- one entry: pill + icon + corner controls ----------------------------------------------------------------- */
+
+.rail__item {
+  position: relative;
+  flex: none;
+  width: var(--rail-item-size);
+  height: var(--rail-item-size);
+}
+
+.rail__icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--bg-primary);
+  color: var(--text-normal);
+  transition:
+    border-radius 0.15s ease-out,
+    background-color 0.15s ease-out,
+    color 0.15s ease-out;
+}
+
+/* Circle -> rounded square on hover, keyboard focus and while the server is open. */
+.rail__item:hover .rail__icon,
+.rail__item--active .rail__icon,
+.rail__icon:focus-visible {
+  border-radius: var(--radius-lg);
+}
+
+.rail__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* The acronym fills the icon and carries the colours, so it also works as the fallback of an image that failed to load. */
+.rail__acronym {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 0 2px;
+  background: var(--bg-primary);
+  color: var(--text-normal);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  transition:
+    background-color 0.15s ease-out,
+    color 0.15s ease-out;
+}
+
+.rail__acronym[data-glyphs='3'] {
+  font-size: 14px;
+}
+
+.rail__acronym[data-glyphs='4'] {
+  font-size: 12px;
+}
+
+.rail__item:hover .rail__acronym,
+.rail__item--active .rail__acronym,
+.rail__icon:focus-visible .rail__acronym,
+.rail__item:hover .rail__icon--home,
+.rail__item--active .rail__icon--home,
+.rail__icon--home:focus-visible {
+  background: var(--brand);
+  color: var(--on-brand);
+}
+
+.rail__home-glyph {
+  font-size: 28px;
+}
+
+/* --- white pill on the rail's left edge ----------------------------------------------------------------------- */
+
+.rail__pill {
+  position: absolute;
+  top: 50%;
+  left: calc((var(--rail-width) - var(--rail-item-size)) / -2);
+  width: 4px;
+  height: 0;
+  border-radius: 0 4px 4px 0;
+  background: var(--interactive-active);
+  transform: translateY(-50%);
+  transition: height 0.15s ease-out;
+  pointer-events: none;
+}
+
+.rail__item:hover .rail__pill,
+.rail__item:has(.rail__icon:focus-visible) .rail__pill {
+  height: 20px;
+}
+
+.rail__item--active .rail__pill {
+  height: 40px;
+}
+
+/* --- export selection controls -------------------------------------------------------------------------------- */
+
+/* A cut-out ring in the rail colour keeps the box legible on top of any server icon. */
+.rail__check {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  box-shadow: 0 0 0 2px var(--bg-tertiary);
+}
+
+.rail__check[data-state='none'] {
+  background: var(--bg-tertiary);
+}
+
+.rail__check[data-invalid] {
+  background: var(--danger);
+}
+
+.rail__check-spinner {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
+}
+
+.rail__badge {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--brand);
+  box-shadow: 0 0 0 2px var(--bg-tertiary);
+  color: var(--on-brand);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* --- tooltip (rendered on document.body, so it is styled globally) -------------------------------------------- */
+
+@keyframes rail-tooltip-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.rail-tooltip {
+  position: fixed;
+  z-index: var(--z-tooltip);
+  max-width: 240px;
+  padding: 8px 12px;
+  border-radius: 5px;
+  background: var(--bg-floating);
+  box-shadow: var(--shadow-high);
+  color: var(--text-normal);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+  transform: translateY(-50%);
+  animation: rail-tooltip-in 0.1s ease-out;
+  pointer-events: none;
+}
+
+.rail-tooltip::before {
+  content: '';
+  position: absolute;
+  top: calc(50% - 5px);
+  left: -5px;
+  border-style: solid;
+  border-width: 5px 5px 5px 0;
+  border-color: transparent var(--bg-floating) transparent transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rail__icon,
+  .rail__acronym,
+  .rail__pill {
+    transition: none;
+  }
+
+  .rail-tooltip {
+    animation: none;
+  }
+}

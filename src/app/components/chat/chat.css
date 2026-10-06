@@ -1,0 +1,332 @@
+/*
+ * Chat pane: message list, "beginning of the channel" header, loading / empty / error states, jump-to-latest button.
+ * Class names are prefixed `chat-`; colours and geometry come from styles/theme.css. The message rows themselves are styled
+ * by styles/message.css and must stay direct, wrapper-free children of `.chat-list__content`: their `content-visibility: auto`
+ * is what makes long channels cheap, so nothing in here may set will-change / contain / transform on the list or its parents.
+ */
+
+.chat-frame {
+  position: relative;
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+/*
+ * The scroll container. A column flexbox only so that a short channel sits at the bottom, like in Discord: the content's
+ * `margin-top: auto` takes the free space, and collapses to 0 as soon as the content is taller than the viewport.
+ * `overflow-anchor` stays at its default (auto) on purpose: rows that render their real height while the user scrolls up
+ * (content-visibility) are compensated by the browser; the one thing it cannot do - a prepend - is corrected in script.
+ */
+.chat-list {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.chat-list:focus-visible {
+  /* inside the box: the shell clips everything that is drawn outside it */
+  outline-offset: -2px;
+}
+
+.chat-list__content {
+  flex: none;
+  min-width: 0;
+  margin-top: auto;
+  padding-bottom: 16px;
+}
+
+/* --- progress / error pill over the top of the list -------------------------------------------------------------- */
+
+.chat-list__status {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  flex: none;
+  display: flex;
+  justify-content: center;
+  height: 0;
+  pointer-events: none;
+}
+
+/* An absolutely positioned child of the flex host is centred by its justify-content, and shrinks to its text up to the full width. */
+.chat-pill {
+  position: absolute;
+  top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  max-width: calc(100% - 32px);
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-floating);
+  box-shadow: var(--shadow-high);
+  color: var(--text-normal);
+  font-size: 14px;
+  line-height: 20px;
+  pointer-events: auto;
+  white-space: nowrap;
+}
+
+.chat-pill--error {
+  gap: 12px;
+  padding: 6px 8px 6px 16px;
+  border-radius: var(--radius-md);
+  white-space: normal;
+}
+
+.chat-pill__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.chat-pill__text strong {
+  color: var(--text-header);
+  font-weight: 600;
+}
+
+.chat-pill__detail {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+}
+
+/* --- "this is the beginning of #channel" ------------------------------------------------------------------------- */
+
+.chat-start {
+  --chat-start-icon-bg: #41434a;
+  padding: 16px 16px 8px;
+}
+
+.chat-start__icon,
+.chat-start__avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.chat-start__icon {
+  width: 68px;
+  height: 68px;
+  background: var(--chat-start-icon-bg);
+  color: var(--interactive-active);
+  font-size: 42px;
+}
+
+.chat-start__avatar {
+  width: 80px;
+  height: 80px;
+  background: var(--bg-tertiary);
+  object-fit: cover;
+  user-select: none;
+}
+
+.chat-start__avatar--fallback {
+  background: var(--brand);
+  color: var(--on-brand);
+  font-size: 36px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.chat-start__title {
+  margin: 8px 0 0;
+  color: var(--text-header);
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 40px;
+  overflow-wrap: anywhere;
+}
+
+.chat-start__text {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+/* --- centred states: nothing open, no access, failed, forum ------------------------------------------------------ */
+
+.chat-state {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 0;
+  padding: 32px;
+  overflow: auto;
+  text-align: center;
+}
+
+.chat-state__icon {
+  color: var(--channel-icon);
+  font-size: 64px;
+  line-height: 1;
+}
+
+.chat-state__title {
+  margin-top: 8px;
+  color: var(--text-header);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 24px;
+  overflow-wrap: anywhere;
+}
+
+.chat-state__text {
+  max-width: 420px;
+  margin-bottom: 8px;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 22px;
+  overflow-wrap: anywhere;
+}
+
+/* --- skeleton rows while the first page loads -------------------------------------------------------------------- */
+
+.chat-skeleton {
+  flex: 1 1 0;
+  min-height: 0;
+  padding: 16px 0;
+  overflow: hidden;
+}
+
+.chat-skeleton__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 2px 48px 2px 16px;
+  margin-top: 17px;
+}
+
+.chat-skeleton__avatar,
+.chat-skeleton__bar {
+  display: block;
+  background: linear-gradient(90deg, var(--bg-modifier-hover) 25%, var(--bg-modifier-selected) 50%, var(--bg-modifier-hover) 75%);
+  background-size: 300% 100%;
+  animation: chat-shimmer 1.6s ease-in-out infinite;
+}
+
+.chat-skeleton__avatar {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+
+.chat-skeleton__lines {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 3px;
+}
+
+.chat-skeleton__bar {
+  height: 14px;
+  border-radius: var(--radius-pill);
+}
+
+.chat-skeleton__bar--name {
+  width: 18%;
+}
+
+.chat-skeleton__bar--text {
+  width: 60%;
+}
+
+/* a little variety so the rows do not read as a repeating pattern */
+.chat-skeleton__row:nth-child(3n + 1) .chat-skeleton__bar--name {
+  width: 26%;
+}
+
+.chat-skeleton__row:nth-child(3n + 2) .chat-skeleton__bar--name {
+  width: 12%;
+}
+
+.chat-skeleton__row:nth-child(2n) .chat-skeleton__bar--text {
+  width: 42%;
+}
+
+.chat-skeleton__row:nth-child(5n + 3) .chat-skeleton__bar--text {
+  width: 74%;
+}
+
+@keyframes chat-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: -100% 0;
+  }
+}
+
+/* --- jump to latest ---------------------------------------------------------------------------------------------- */
+
+.chat-jump {
+  position: absolute;
+  right: 24px;
+  bottom: 16px;
+  z-index: var(--z-sticky);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 14px 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--brand);
+  box-shadow: var(--shadow-high);
+  color: var(--on-brand);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+  animation: chat-jump-in 0.15s ease-out;
+}
+
+.chat-jump:hover {
+  background: var(--brand-hover);
+}
+
+.chat-jump:active {
+  background: var(--brand-active);
+}
+
+.chat-jump svg {
+  font-size: 20px;
+}
+
+@keyframes chat-jump-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-skeleton__avatar,
+  .chat-skeleton__bar,
+  .chat-jump {
+    animation: none;
+  }
+}

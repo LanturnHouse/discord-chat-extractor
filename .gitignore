@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.zip
+*.log
+.vite/
+coverage/
+.DS_Store
+.e2e/
+e2e/.tmp/

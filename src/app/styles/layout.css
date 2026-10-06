@@ -1,0 +1,147 @@
+/*
+ * The 3-column shell.
+ *
+ *   ┌──────┬───────────┬──────────────────────────────┐
+ *   │ rail │  sidebar  │ main                         │
+ *   │ 72px │   240px   │  ┌ topbar (48px) ──────────┐ │
+ *   │      │           │  ├ chat (flex 1) ──────────┤ │
+ *   └──────┴───────────┴──┴─────────────────────────┴─┘
+ *
+ * Area components put these class names on their ROOT element and fill it; they never size themselves.
+ *   <ServerRail/> .app-rail    <Sidebar/> .app-sidebar    <TopBar/> .app-topbar    <ChatPane/> .app-chat
+ * The sidebar is 240px in the DM view as well. Below --min-app-width the page scrolls horizontally.
+ */
+
+#root {
+  height: 100vh;
+  height: 100dvh;
+  min-width: var(--min-app-width);
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: var(--rail-width) var(--sidebar-width) minmax(0, 1fr);
+  grid-template-areas: 'rail sidebar main';
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-rail {
+  grid-area: rail;
+  min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--bg-tertiary);
+}
+
+.app-sidebar {
+  grid-area: sidebar;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--bg-secondary);
+}
+
+.app-main {
+  grid-area: main;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--bg-primary);
+}
+
+.app-topbar {
+  flex: 0 0 var(--topbar-height);
+  position: relative;
+  z-index: var(--z-sticky);
+  min-height: var(--topbar-height);
+  max-height: var(--topbar-height);
+  box-shadow: var(--shadow-header);
+}
+
+.app-chat {
+  position: relative;
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* Only reachable by script (the "skip to messages" link while no message list is open); the ring stays inside the pane. */
+.app-chat:focus-visible {
+  outline-offset: -2px;
+}
+
+/*
+ * Skip links (components/common/SkipLinks.tsx): out of sight until one takes the keyboard focus, then drawn over the top-left
+ * corner of the app. They are the first tab stops, before the hundreds of servers / conversations.
+ */
+.skip-link:not(:focus) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.skip-link:focus {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: var(--z-tooltip);
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--brand);
+  box-shadow: var(--shadow-high);
+  color: var(--on-brand);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 18px;
+  text-decoration: none;
+}
+
+/* Full-screen centred content: boot spinner, fatal error, onboarding. */
+.app-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 24px;
+  overflow: auto;
+}
+
+.app-fatal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 480px;
+  padding: 32px;
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  box-shadow: var(--shadow-high);
+  text-align: center;
+}
+
+.app-fatal__icon {
+  color: var(--danger);
+  font-size: 40px;
+}
+
+.app-fatal__title {
+  color: var(--text-header);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.app-fatal__message {
+  color: var(--text-normal);
+  overflow-wrap: anywhere;
+}

@@ -1,0 +1,1193 @@
+/*
+ * Top bar and the whole export UI (popovers, progress dialog). Colours come from theme.css; the only literals are the
+ * overlay tints of the visual spec (the backdrop, the white separator and chip tint on the brand-coloured button).
+ * Popovers and the dialog are portalled to <body>, so their rules do not depend on the top bar's stacking context.
+ * 48px height, the bottom shadow and the stacking level of the bar itself come from styles/layout.css (.app-topbar).
+ */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  background: var(--bg-primary);
+  /* The @container rules below collapse the right-hand side by the width of the bar (the sidebar widths are fixed, so this is the width of the window minus 312px). */
+  container: topbar / inline-size;
+}
+
+/* --- channel title ---------------------------------------------------------------------------------------------- */
+
+/* Takes whatever the actions leave over, but never less than a readable name (the actions shrink or collapse first). */
+.topbar__title {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: 8px;
+  min-width: 160px;
+}
+
+.topbar__app-name {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 16px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar__icon {
+  flex: none;
+  color: var(--channel-icon);
+  font-size: 24px;
+}
+
+.topbar__name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-header);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar__name--parent {
+  color: var(--interactive-normal);
+}
+
+.topbar__crumb-separator {
+  flex: none;
+  margin: 0 -2px;
+  color: var(--channel-icon);
+  font-size: 18px;
+}
+
+.topbar__avatar {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.topbar__avatar--fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--interactive-muted);
+  color: var(--on-brand);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.topbar__divider {
+  flex: none;
+  width: 1px;
+  height: 24px;
+  margin: 0 4px;
+  background: var(--divider);
+}
+
+/* The topic gets whatever the name leaves over and is cut off with an ellipsis; the full text is the native tooltip. */
+.topbar__topic {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- right side: account, selection chip, download ------------------------------------------------------------- */
+
+/* min-width 0: without it the actions keep their full width and the title takes all of the squeeze. The account label is the part that gives way. */
+.topbar__actions {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.topbar__account {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 8px;
+  max-width: 240px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.topbar__account-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar__demo {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--brand);
+  color: var(--on-brand);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 14px;
+}
+
+/* Inside the extension the pill is the way back from the demo to the real account. */
+.topbar__demo--exit {
+  font-size: 11px;
+  line-height: 16px;
+  padding: 1px 8px;
+  white-space: nowrap;
+  transition: background-color 0.1s ease;
+}
+
+.topbar__demo--exit:hover {
+  background: var(--brand-hover);
+}
+
+.topbar__demo--exit:active {
+  background: var(--brand-active);
+}
+
+.topbar__chip {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px 0 10px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-tertiary);
+  color: var(--text-normal);
+  font-size: 14px;
+  line-height: 1;
+  white-space: nowrap;
+  transition: background-color 0.1s ease;
+}
+
+.topbar__chip:hover {
+  background: var(--bg-floating);
+}
+
+.topbar__chip-icon {
+  color: var(--text-positive);
+  font-size: 14px;
+}
+
+.topbar__chip-text {
+  white-space: nowrap;
+}
+
+.topbar__chip-count {
+  font-variant-numeric: tabular-nums;
+}
+
+/* At least one selected chat exports with settings of its own: a small brand dot on the chip's corner. */
+.topbar__chip-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--bg-primary);
+  border-radius: 50%;
+  background: var(--brand);
+}
+
+.topbar__chip[aria-disabled='true'] {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.topbar__chip[aria-disabled='true']:hover {
+  background: var(--bg-tertiary);
+}
+
+.topbar__chip[aria-disabled='true'] .topbar__chip-icon {
+  color: inherit;
+  opacity: 0.6;
+}
+
+/* --- download split button ------------------------------------------------------------------------------------- */
+
+.topbar__split {
+  display: inline-flex;
+  flex: none;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--brand);
+  color: var(--on-brand);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.topbar__split-main,
+.topbar__split-caret {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  background: var(--brand);
+  color: inherit;
+  transition: background-color 0.17s ease;
+}
+
+.topbar__split-main {
+  gap: 6px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  white-space: nowrap;
+}
+
+.topbar__split-main:only-child {
+  border-radius: var(--radius-sm);
+}
+
+.topbar__split-caret {
+  justify-content: center;
+  width: 28px;
+  border-left: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 18px;
+}
+
+.topbar__split:not([data-unavailable]) .topbar__split-main:hover,
+.topbar__split:not([data-unavailable]) .topbar__split-caret:hover,
+.topbar__split-caret[aria-expanded='true'] {
+  background: var(--brand-hover);
+}
+
+.topbar__split:not([data-unavailable]) .topbar__split-main:active,
+.topbar__split:not([data-unavailable]) .topbar__split-caret:active {
+  background: var(--brand-active);
+}
+
+/* No selection: the whole button looks and says "not available", but stays focusable so its hint can be opened. */
+.topbar__split[data-unavailable] {
+  opacity: 0.5;
+}
+
+.topbar__split[data-unavailable] .topbar__split-main,
+.topbar__split[data-unavailable] .topbar__split-caret {
+  cursor: not-allowed;
+}
+
+.topbar__split-icon {
+  flex: none;
+  font-size: 18px;
+}
+
+.topbar__format-chip {
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  background: rgba(255, 255, 255, 0.2);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 16px;
+}
+
+/*
+ * Narrow window (the page is at least 900px wide: the bar is then 556px wide): the title keeps >= 160px, so the actions give
+ * way in this order - the "connected as" text (the DEMO pill stays), the word in the selection chip (icon + number stay),
+ * the format tag of the button. Hidden parts stay readable for screen readers (clipped, not display: none).
+ */
+@container topbar (max-width: 740px) {
+  .topbar__account-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+
+@container topbar (max-width: 620px) {
+  .topbar__chip {
+    gap: 4px;
+    padding: 0 10px;
+  }
+
+  .topbar__chip-rest {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+
+@container topbar (max-width: 580px) {
+  .topbar__format-chip {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+
+/* --- popovers (shared) ----------------------------------------------------------------------------------------- */
+
+.topbar-popover {
+  position: fixed;
+  z-index: var(--z-popover);
+  display: flex;
+  flex-direction: column;
+  max-width: calc(100vw - 16px);
+  overflow: hidden;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  box-shadow: var(--shadow-high);
+  color: var(--text-normal);
+  font-size: 14px;
+  line-height: 1.3;
+  /* Korean wraps between words, never inside them; names without spaces may still break as a last resort. */
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+/* Catches a Tab that left the popover's content (out of a date input's last segment); invisible and out of the layout. */
+.topbar-focus-guard {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* --- selection list --------------------------------------------------------------------------------------------- */
+
+.topbar-sel__groups {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 4px 8px 8px;
+  overflow-y: auto;
+}
+
+.topbar-sel__group {
+  min-width: 0;
+}
+
+.topbar-sel__heading {
+  margin: 0;
+  padding: 12px 8px 4px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.topbar-sel__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.topbar-sel__row {
+  min-width: 0;
+}
+
+.topbar-sel__line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 4px 0 8px;
+  border-radius: var(--radius-sm);
+}
+
+.topbar-sel__line:hover,
+.topbar-sel__line:focus-within {
+  background: var(--bg-modifier-hover);
+}
+
+.topbar-sel__icon {
+  flex: none;
+  color: var(--channel-icon);
+  font-size: 18px;
+}
+
+.topbar-sel__name {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-normal);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-sel__parent {
+  color: var(--text-muted);
+}
+
+.topbar-sel__separator {
+  flex: none;
+  color: var(--channel-icon);
+}
+
+.topbar-sel__gear,
+.topbar-sel__remove {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  color: var(--interactive-normal);
+  font-size: 14px;
+}
+
+.topbar-sel__gear {
+  position: relative;
+}
+
+.topbar-sel__gear:hover,
+.topbar-sel__remove:hover {
+  background: var(--bg-modifier-active);
+  color: var(--interactive-hover);
+}
+
+/* A gear that unfolds its panel stays pressed while the panel is open. */
+.topbar-sel__gear[aria-expanded='true'] {
+  background: var(--bg-modifier-selected);
+  color: var(--interactive-active);
+}
+
+/* Own settings: the gear is lit and carries a dot, so the chats that differ from the common settings stand out at a glance. */
+.topbar-sel__gear[data-active],
+.topbar-sel__gear[data-active]:hover {
+  color: var(--brand);
+}
+
+.topbar-sel__gear[data-invalid],
+.topbar-sel__gear[data-invalid]:hover {
+  color: var(--text-danger);
+}
+
+.topbar-sel__gear[data-active]::after,
+.topbar-sel__gear[data-invalid]::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  box-sizing: border-box;
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--bg-secondary);
+  border-radius: 50%;
+  background: var(--brand);
+}
+
+.topbar-sel__gear[data-invalid]::after {
+  background: var(--danger);
+}
+
+/* What a chat exports with when that is not the common setting; lines up with the name (8px padding + 18px icon + 8px gap). */
+.topbar-sel__scope {
+  margin: -2px 8px 4px 34px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-sel__scope[data-invalid] {
+  color: var(--text-danger);
+  font-weight: 500;
+}
+
+.topbar-sel__footer {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+  padding: 8px 12px;
+  border-top: 1px solid var(--divider);
+}
+
+.topbar-sel__clear {
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--text-danger);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.topbar-sel__clear:hover {
+  background: var(--bg-modifier-hover);
+  text-decoration: underline;
+}
+
+/* --- options popover -------------------------------------------------------------------------------------------- */
+
+.topbar-options {
+  gap: 16px;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.topbar-options__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.topbar-options__heading {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.topbar-options__help {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.topbar-options__error {
+  margin: 0;
+  color: var(--text-danger);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* A segmented control in its own section keeps the width of its options instead of stretching across the popover. */
+.topbar-options__section > .topbar-radio--segmented {
+  align-self: flex-start;
+}
+
+.topbar-options__theme {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.topbar-options__theme-label {
+  color: var(--text-normal);
+  font-weight: 500;
+}
+
+.topbar-radio__option {
+  cursor: pointer;
+}
+
+.topbar-radio__text {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  gap: 2px;
+  min-width: 0;
+}
+
+.topbar-radio__label {
+  color: var(--text-header);
+  font-weight: 600;
+}
+
+.topbar-radio__description {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.topbar-radio--cards {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.topbar-radio--cards .topbar-radio__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  transition: background-color 0.1s ease;
+}
+
+.topbar-radio--cards .topbar-radio__option:hover {
+  background: var(--bg-modifier-hover);
+}
+
+.topbar-radio--cards .topbar-radio__option[aria-checked='true'] {
+  border-color: var(--brand);
+  background: var(--bg-modifier-selected);
+}
+
+.topbar-radio__check {
+  flex: none;
+  color: var(--brand);
+  font-size: 18px;
+}
+
+.topbar-radio--segmented {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+}
+
+.topbar-radio--segmented .topbar-radio__option {
+  padding: 4px 14px;
+  border-radius: var(--radius-xs);
+  color: var(--interactive-normal);
+  font-weight: 500;
+}
+
+.topbar-radio--segmented .topbar-radio__option:hover {
+  color: var(--interactive-hover);
+}
+
+.topbar-radio--segmented .topbar-radio__option[aria-checked='true'] {
+  background: var(--brand);
+  color: var(--on-brand);
+}
+
+.topbar-range {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.topbar-range__field {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar-range__label {
+  color: var(--text-normal);
+  font-weight: 500;
+}
+
+.topbar-range__control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.topbar-range__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-normal);
+  font-size: 14px;
+}
+
+.topbar-range__input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+/* Keeps the input from growing when the clear button appears. */
+.topbar-range__slot,
+.topbar-range__clear {
+  flex: none;
+  width: 24px;
+  height: 24px;
+}
+
+.topbar-range__clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--interactive-normal);
+  font-size: 14px;
+}
+
+.topbar-range__clear:hover {
+  background: var(--bg-modifier-hover);
+  color: var(--interactive-hover);
+}
+
+/* --- number of messages ----------------------------------------------------------------------------------------- */
+
+.topbar-count {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.topbar-count__field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar-count__input {
+  flex: none;
+  width: 120px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-normal);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.topbar-count__input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.topbar-count__unit {
+  color: var(--text-muted);
+}
+
+.topbar-count__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.topbar-count__chip {
+  padding: 2px 10px;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-pill);
+  color: var(--interactive-normal);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+  transition: background-color 0.1s ease;
+}
+
+.topbar-count__chip:hover {
+  background: var(--bg-modifier-hover);
+  color: var(--interactive-hover);
+}
+
+.topbar-count__chip[aria-pressed='true'] {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: var(--on-brand);
+}
+
+/* --- one chat's own settings (unfolded under its row in the selection list) --------------------------------------- */
+
+.topbar-scope {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 4px 4px 8px 8px;
+  padding: 12px;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+}
+
+.topbar-scope__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-header);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.topbar-scope__toggle input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--brand);
+  cursor: pointer;
+}
+
+.topbar-scope__reset {
+  align-self: flex-start;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--link);
+  font-weight: 500;
+}
+
+.topbar-scope__reset:hover {
+  background: var(--bg-modifier-hover);
+  text-decoration: underline;
+}
+
+/* --- hint (download pressed without a selection) --------------------------------------------------------------- */
+
+.topbar-hint {
+  gap: 4px;
+  padding: 12px 16px;
+}
+
+.topbar-hint__title {
+  margin: 0;
+  color: var(--text-header);
+  font-weight: 600;
+}
+
+.topbar-hint__body {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* --- progress dialog -------------------------------------------------------------------------------------------- */
+
+.topbar-modal {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.topbar-dialog {
+  display: flex;
+  flex-direction: column;
+  width: 560px;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  box-shadow: var(--shadow-high);
+  color: var(--text-normal);
+  font-size: 14px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.topbar-dialog__header {
+  flex: none;
+  padding: 20px 24px 4px;
+}
+
+.topbar-dialog__title {
+  margin: 0;
+  color: var(--text-header);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.topbar-dialog__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  padding: 12px 24px 20px;
+  overflow-y: auto;
+}
+
+.topbar-dialog__footer {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 24px;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  background: var(--bg-secondary);
+}
+
+.topbar-dialog__footer .dce-button[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+/* Not "busy": this action is gone for good (the ZIP cannot be aborted any more). */
+.topbar-dialog__footer .dce-button[data-blocked] {
+  cursor: not-allowed;
+}
+
+/* The dialog body scrolls as a whole; its blocks keep their natural height instead of being squeezed. */
+.topbar-progress,
+.topbar-targets,
+.topbar-summary,
+.topbar-failures {
+  flex: none;
+}
+
+.topbar-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.topbar-progress__bar {
+  position: relative;
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--bg-tertiary);
+}
+
+.topbar-progress__fill {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--brand);
+  transition: width 0.2s ease;
+}
+
+.topbar-progress__bar[data-indeterminate] .topbar-progress__fill {
+  width: 40%;
+  animation: topbar-indeterminate 1.2s ease-in-out infinite;
+}
+
+@keyframes topbar-indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(250%);
+  }
+}
+
+.topbar-progress__meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-normal);
+  font-variant-numeric: tabular-nums;
+}
+
+.topbar-progress__elapsed {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.topbar-progress__note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.topbar-targets {
+  max-height: min(40vh, 280px);
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  list-style: none;
+}
+
+.topbar-targets__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 6px 12px;
+}
+
+.topbar-targets__icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  font-size: 16px;
+}
+
+.topbar-targets__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--channel-icon);
+}
+
+.topbar-targets__row[data-status='fetching'] .topbar-targets__icon {
+  color: var(--interactive-normal);
+}
+
+.topbar-targets__row[data-status='done'] .topbar-targets__icon {
+  color: var(--success);
+}
+
+.topbar-targets__row[data-status='skipped'] .topbar-targets__icon {
+  color: var(--warning);
+}
+
+.topbar-targets__row[data-status='error'] .topbar-targets__icon,
+.topbar-targets__row[data-status='error'] .topbar-targets__state {
+  color: var(--danger);
+}
+
+.topbar-targets__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.topbar-targets__label {
+  overflow: hidden;
+  color: var(--text-header);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-targets__row[data-status='queued'] .topbar-targets__label,
+.topbar-targets__row[data-status='cancelled'] .topbar-targets__label {
+  color: var(--text-muted);
+}
+
+.topbar-targets__scope,
+.topbar-targets__reason {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.topbar-targets__state {
+  flex: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.topbar-result {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.topbar-summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-normal);
+}
+
+.topbar-summary > svg {
+  flex: none;
+  margin-top: 1px;
+  font-size: 18px;
+}
+
+.topbar-summary[data-tone='success'] > svg {
+  color: var(--success);
+}
+
+.topbar-summary[data-tone='warning'] > svg {
+  color: var(--warning);
+}
+
+.topbar-summary[data-tone='danger'] > svg {
+  color: var(--danger);
+}
+
+.topbar-summary[data-tone='neutral'] {
+  flex-direction: column;
+  gap: 4px;
+}
+
+.topbar-summary__sub {
+  color: var(--text-muted);
+}
+
+.topbar-failures__heading {
+  margin: 0 0 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.topbar-failures__list {
+  max-height: min(30vh, 220px);
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  list-style: none;
+}
+
+.topbar-failures__row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+}
+
+.topbar-failures__row + .topbar-failures__row {
+  border-top: 1px solid var(--divider);
+}
+
+.topbar-failures__label {
+  color: var(--text-header);
+  font-weight: 500;
+}
+
+.topbar-failures__reason {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* Progress stays visible for people who asked for less motion, just without the sliding bar. */
+@media (prefers-reduced-motion: reduce) {
+  .topbar-progress__fill {
+    transition: none;
+  }
+
+  .topbar-progress__bar[data-indeterminate] .topbar-progress__fill {
+    width: 100%;
+    opacity: 0.5;
+    animation: none;
+  }
+
+  .topbar__chip,
+  .topbar__demo--exit,
+  .topbar__split-main,
+  .topbar__split-caret,
+  .topbar-radio--cards .topbar-radio__option,
+  .topbar-count__chip {
+    transition: none;
+  }
+}

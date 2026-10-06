@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "Discord Chat Extractor",
+  "short_name": "DC Extractor",
+  "version": "0.1.0",
+  "description": "Export your Discord chat history (servers, channels, DMs) to TXT, Markdown, HTML, Excel, CSV or JSON.",
+  "minimum_chrome_version": "116",
+  "action": {
+    "default_title": "Discord Chat Extractor",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": ["webRequest", "storage"],
+  "host_permissions": [
+    "https://discord.com/*",
+    "https://ptb.discord.com/*",
+    "https://canary.discord.com/*",
+    "https://discordapp.com/*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://discord.com; img-src 'self' data: blob: https://cdn.discordapp.com https://media.discordapp.net https://*.discordapp.net https://*.discordapp.com; media-src 'self' blob: https://cdn.discordapp.com https://media.discordapp.net https://*.discordapp.net; font-src 'none'; frame-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'"
+  }
+}

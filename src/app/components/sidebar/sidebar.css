@@ -1,0 +1,517 @@
+/*
+ * Sidebar (.app-sidebar). Width, grid area, the flex column and the background come from styles/layout.css;
+ * colours and radii from theme.css. Class names: sb-search / sb-guild-header (top strip), sb-scroll + sb-list (body),
+ * sb-section (DM list heading), sb-row (shared by DM and channel rows), sb-dm, sb-category, sb-channel, sb-skeleton.
+ */
+
+/* --- top strip: DM filter box / server name ------------------------------------------------------------------- */
+
+.sb-search,
+.sb-guild-header {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: 0 0 48px;
+  align-items: center;
+  min-height: 48px;
+  box-shadow: var(--shadow-header);
+}
+
+.sb-search {
+  padding: 0 10px;
+}
+
+.sb-search__field {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+}
+
+.sb-search__input {
+  width: 100%;
+  height: 100%;
+  padding: 0 30px 0 8px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: var(--text-normal);
+  font-size: 14px;
+  text-overflow: ellipsis;
+}
+
+.sb-search__input::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+.sb-search__input:focus-visible {
+  outline-offset: 0;
+}
+
+.sb-search__icon {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  color: var(--text-muted);
+  font-size: 16px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.sb-search__clear {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-xs);
+  color: var(--interactive-normal);
+  font-size: 14px;
+  transform: translateY(-50%);
+}
+
+.sb-search__clear:hover {
+  color: var(--interactive-hover);
+}
+
+.sb-guild-header {
+  gap: 8px;
+  padding: 0 16px;
+}
+
+.sb-guild-header__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-header);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-guild-header__check {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.sb-guild-header__spinner {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* --- scrolling body -------------------------------------------------------------------------------------------- */
+
+.sb-scroll {
+  flex: 1 1 0;
+  min-height: 0;
+  padding-bottom: 16px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* The target of the "skip to channel list" link: the ring stays inside the box (the sidebar clips what is drawn outside it). */
+.sb-scroll:focus-visible {
+  outline-offset: -2px;
+}
+
+/* The first channel of a server should not touch the header shadow. */
+.sb-guild-header + .sb-scroll {
+  padding-top: 8px;
+}
+
+.sb-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sb-empty {
+  margin: 0;
+  padding: 24px 16px;
+  color: var(--text-muted);
+  font-size: 14px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.sb-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 16px;
+  text-align: center;
+}
+
+.sb-error__icon {
+  color: var(--danger);
+  font-size: 28px;
+}
+
+.sb-error__message {
+  margin: 0;
+  color: var(--text-normal);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+/* --- DM list heading ------------------------------------------------------------------------------------------- */
+
+.sb-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 16px 4px 18px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.sb-section__title {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-section__count {
+  flex: none;
+  font-weight: 500;
+}
+
+.sb-section__check {
+  margin-left: auto;
+}
+
+/* --- rows shared by DMs and channels --------------------------------------------------------------------------- */
+
+.sb-row {
+  position: relative;
+  margin: 0 8px;
+  border-radius: var(--radius-sm);
+}
+
+.sb-row:hover {
+  background: var(--bg-modifier-hover);
+}
+
+.sb-row--active,
+.sb-row--active:hover {
+  background: var(--bg-modifier-selected);
+}
+
+.sb-row__main {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border-radius: inherit;
+  text-align: left;
+}
+
+/* The ring is drawn inside the row: the scroll container would clip it at the edges. */
+.sb-row__main:focus-visible,
+.sb-category__main:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Overlay on the right end of the row; the button reserves the space with its padding. */
+.sb-row__check,
+.sb-row__lock {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+}
+
+.sb-row__lock {
+  right: 12px;
+  color: var(--channel-icon);
+  font-size: 16px;
+}
+
+/* --- direct messages ------------------------------------------------------------------------------------------- */
+
+.sb-dm {
+  /* Hundreds of conversations: rows far outside the viewport are neither laid out nor painted. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 42px;
+}
+
+.sb-dm__main {
+  gap: 12px;
+  height: 42px;
+  padding: 0 34px 0 8px;
+}
+
+.sb-dm__avatar {
+  display: flex;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--interactive-muted);
+}
+
+.sb-dm__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sb-dm__fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--text-header);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.sb-dm__text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+
+.sb-dm__name {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-dm__sub {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-dm:hover .sb-dm__name {
+  color: var(--interactive-hover);
+}
+
+.sb-dm.sb-row--active .sb-dm__name {
+  color: var(--text-header);
+}
+
+.sb-dm.sb-row--locked .sb-dm__main {
+  opacity: 0.5;
+}
+
+/* --- category headers ------------------------------------------------------------------------------------------ */
+
+.sb-category {
+  position: relative;
+  padding: 16px 8px 0;
+}
+
+.sb-category__main {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  height: 24px;
+  padding-right: 24px;
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 16px;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.sb-category__main:hover {
+  color: var(--interactive-hover);
+}
+
+.sb-category__chevron {
+  flex: none;
+  font-size: 12px;
+  transition: transform 0.1s ease-out;
+}
+
+.sb-category--collapsed .sb-category__chevron {
+  transform: rotate(-90deg);
+}
+
+.sb-category__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-category__check {
+  position: absolute;
+  top: 28px;
+  right: 16px;
+  transform: translateY(-50%);
+}
+
+/* --- channels, threads and forum posts ------------------------------------------------------------------------- */
+
+.sb-channel {
+  margin-top: 1px;
+  margin-bottom: 1px;
+}
+
+.sb-channel__main {
+  gap: 6px;
+  height: 32px;
+  padding: 0 32px 0 8px;
+  color: var(--channel-icon);
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.sb-channel:hover .sb-channel__main {
+  color: var(--text-normal);
+}
+
+.sb-channel.sb-row--active .sb-channel__main {
+  color: var(--interactive-active);
+}
+
+.sb-channel__icon {
+  flex: none;
+  font-size: 20px;
+}
+
+.sb-channel--thread {
+  margin-left: 32px;
+}
+
+.sb-channel--thread .sb-channel__icon {
+  font-size: 16px;
+}
+
+.sb-channel__name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-channel__lock {
+  flex: none;
+  font-size: 14px;
+}
+
+.sb-channel--locked .sb-channel__main {
+  opacity: 0.5;
+}
+
+/* Forum / media containers have no checkbox: the chevron shows that they fold. */
+.sb-channel__chevron {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  color: var(--channel-icon);
+  font-size: 14px;
+  transform: translateY(-50%);
+  transition: transform 0.1s ease-out;
+  pointer-events: none;
+}
+
+.sb-channel--folded .sb-channel__chevron {
+  transform: translateY(-50%) rotate(-90deg);
+}
+
+/* --- loading skeleton ------------------------------------------------------------------------------------------ */
+
+@keyframes sb-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: -100% 0;
+  }
+}
+
+.sb-skeleton {
+  padding-bottom: 8px;
+}
+
+.sb-skeleton__header {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  padding: 16px 16px 0;
+}
+
+.sb-skeleton__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  margin: 1px 8px;
+  padding: 0 8px;
+}
+
+.sb-skeleton__bar {
+  display: block;
+  height: 14px;
+  border-radius: 7px;
+  background: linear-gradient(90deg, var(--bg-modifier-hover) 0%, var(--bg-modifier-active) 50%, var(--bg-modifier-hover) 100%);
+  background-size: 200% 100%;
+  animation: sb-shimmer 1.4s ease-in-out infinite;
+}
+
+.sb-skeleton__bar--header {
+  height: 10px;
+}
+
+.sb-skeleton__bar--icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-skeleton__bar {
+    animation: none;
+  }
+
+  .sb-category__chevron,
+  .sb-channel__chevron {
+    transition: none;
+  }
+}
