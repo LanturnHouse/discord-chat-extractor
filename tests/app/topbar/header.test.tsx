@@ -127,6 +127,45 @@ describe('channel title', () => {
     expect(fallback.getAttribute('aria-hidden')).toBe('true');
   });
 
+  describe('the names are cut off with an ellipsis when long, so each carries the full name as its native tooltip (QA-LAYOUT-08)', () => {
+    it('a channel', async () => {
+      await bootTopBar();
+      render(<TopBar />);
+      await open(MOCK_IDS.generalChannel, MOCK_IDS.bigGuild);
+      expect(screen.getByRole('heading', { level: 1 }).getAttribute('title')).toBe('general');
+    });
+
+    it('a DM', async () => {
+      await bootTopBar();
+      render(<TopBar />);
+      await open(MOCK_IDS.dmFriend, null);
+      const name = appStore.getState().dms.find((dm) => dm.id === MOCK_IDS.dmFriend)?.name ?? '';
+      expect(name).not.toBe('');
+      expect(screen.getByRole('heading', { level: 1 }).getAttribute('title')).toBe(name);
+    });
+
+    it('a thread: the thread and its parent', async () => {
+      await bootTopBar();
+      render(<TopBar />);
+      await open(MOCK_IDS.generalThread, MOCK_IDS.bigGuild);
+      const threadName = appStore.getState().trees[MOCK_IDS.bigGuild].tree?.byId[MOCK_IDS.generalThread].name;
+      expect(threadName).toBeTruthy();
+      expect(screen.getByRole('heading', { level: 1 }).getAttribute('title')).toBe(threadName);
+      expect(header().querySelector('.topbar__name--parent')?.getAttribute('title')).toBe('general');
+    });
+
+    it('a hostile name is the tooltip text as it is (an attribute, never markup)', async () => {
+      await bootTopBar();
+      await act(async () => {
+        await appStore.getState().ensureGuildTree(MOCK_IDS.hostileNameGuild);
+      });
+      const hostile = Object.values(appStore.getState().trees[MOCK_IDS.hostileNameGuild].tree?.byId ?? {}).find((node) => node.name.includes('<img'));
+      render(<TopBar />);
+      await open(hostile?.id ?? '', MOCK_IDS.hostileNameGuild);
+      expect(screen.getByRole('heading', { level: 1 }).getAttribute('title')).toBe(hostile?.name);
+    });
+  });
+
   it('follows the open channel', async () => {
     await bootTopBar();
     render(<TopBar />);

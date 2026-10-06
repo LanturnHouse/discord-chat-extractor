@@ -40,8 +40,9 @@ export function createNavigationActions(ctx: StoreContext): NavigationActions {
       const { view } = get();
       const keepView = guildId === null ? view.kind === 'dms' : view.kind === 'guild' && view.guildId === guildId;
       set({ view: keepView ? view : guildId === null ? DMS_VIEW : { kind: 'guild', guildId }, activeChannelId: channelId });
-      // The sidebar needs the tree to show where the channel lives; a no-op when it is already loaded.
-      if (guildId !== null) void get().ensureGuildTree(guildId);
+      // The sidebar needs the tree to show where the channel lives. A loaded one is left alone: opening a channel must not
+      // queue the lookup of forum posts that `ensureGuildTree` repeats for a tree whose posts Discord had not indexed yet.
+      if (guildId !== null && get().trees[guildId]?.status !== 'loaded') void get().ensureGuildTree(guildId);
       return get().loadInitialMessages(channelId);
     },
 

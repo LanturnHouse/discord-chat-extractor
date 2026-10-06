@@ -17,8 +17,6 @@ export const topbarStrings = defineStrings({
 
     // per-channel settings (the gear in the selection list)
     channelSettings: (name: string) => `${name} 내보내기 설정`,
-    useCommonSettings: '공통 설정 사용',
-    commonSettingsNow: (summary: string) => `공통 설정: ${summary}`,
     resetToCommon: '공통 설정으로 되돌리기',
     settingsNeedAttention: '설정을 확인하세요',
 
@@ -80,6 +78,7 @@ export const topbarStrings = defineStrings({
     // progress dialog
     titleRunning: '채팅을 내보내는 중…',
     titleDone: '내보내기 완료',
+    titleNothing: '내보낸 채널이 없어요',
     titleCancelled: '내보내기를 취소했어요',
     titleError: '내보내지 못했어요',
     titleSaveFailed: '파일을 저장하지 못했어요',
@@ -103,7 +102,7 @@ export const topbarStrings = defineStrings({
     stoppedEarly: (count: number, fmt: NumberFormatter) => `내보내기가 중간에 멈춰서 나머지 채널 ${fmt(count)}개는 내보내지 못했어요.`,
     cancelledSummary: (files: number, fmt: NumberFormatter) => `취소하기 전에 채널 ${fmt(files)}개를 마쳤어요.`,
     exportedSummary: (files: number, fmt: NumberFormatter) => `채널 ${fmt(files)}개를 내보냈어요.`,
-    unsavedNote: '아직 저장되지 않았어요. 저장하지 않고 닫으면 사라져요.',
+    unsavedNote: (_files: number) => '아직 저장되지 않았어요. 저장하지 않고 닫으면 사라져요.',
     cancelledSaved: (files: number, filename: string, fmt: NumberFormatter) => `채널 ${fmt(files)}개를 ${filename} 파일로 저장했어요.`,
     cancelledNothing: '마친 채널이 없어서 저장할 파일이 없어요.',
     saveCompleted: (files: number, fmt: NumberFormatter) => `완료한 채널 ${fmt(files)}개 저장`,
@@ -122,8 +121,6 @@ export const topbarStrings = defineStrings({
     ownSettingsCount: (count, fmt) => `${fmt(count)} with own settings`,
 
     channelSettings: (name) => `Export settings for ${name}`,
-    useCommonSettings: 'Use common settings',
-    commonSettingsNow: (summary) => `Common settings: ${summary}`,
     resetToCommon: 'Reset to common settings',
     settingsNeedAttention: 'Check these settings',
 
@@ -185,6 +182,7 @@ export const topbarStrings = defineStrings({
 
     titleRunning: 'Exporting chats…',
     titleDone: 'Export complete',
+    titleNothing: 'Nothing was exported',
     titleCancelled: 'Export cancelled',
     titleError: 'Export failed',
     titleSaveFailed: 'Could not save the file',
@@ -208,7 +206,8 @@ export const topbarStrings = defineStrings({
     stoppedEarly: (count, fmt) => `The export stopped early, so ${fmt(count)} more ${count === 1 ? 'channel was' : 'channels were'} not exported.`,
     cancelledSummary: (files, fmt) => `${fmt(files)} ${files === 1 ? 'channel was' : 'channels were'} finished before you cancelled.`,
     exportedSummary: (files, fmt) => `${fmt(files)} ${files === 1 ? 'channel was' : 'channels were'} exported.`,
-    unsavedNote: 'They have not been saved yet. Closing without saving discards them.',
+    unsavedNote: (files) =>
+      files === 1 ? 'It has not been saved yet. Closing without saving discards it.' : 'They have not been saved yet. Closing without saving discards them.',
     cancelledSaved: (files, filename, fmt) => `${fmt(files)} ${files === 1 ? 'channel' : 'channels'} saved as ${filename}.`,
     cancelledNothing: 'No channel was finished, so there is nothing to save.',
     saveCompleted: (files, fmt) => `Save the ${fmt(files)} completed ${files === 1 ? 'channel' : 'channels'}`,

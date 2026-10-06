@@ -72,6 +72,15 @@ export function wrapFromGuard(root: HTMLElement, edge: 'start' | 'end', cameFrom
   (toLast ? items[items.length - 1] : items[0] ?? root).focus();
 }
 
+/**
+ * A key that is held down keeps sending `keydown`, and for a button each one is another press. Call it from `onKeyDown` of a
+ * control that must not fire more than once per press (the focus can land on it by itself when a dialog closes, with the key
+ * still down). Only Enter and Space: Tab and the arrows keep repeating.
+ */
+export function ignoreKeyRepeat(event: { key: string; repeat: boolean; preventDefault(): void }): void {
+  if (event.repeat && (event.key === 'Enter' || event.key === ' ')) event.preventDefault();
+}
+
 /** Tab trap on the whole document while `enabled`: focus that wandered out (a click on the backdrop) is caught as well. */
 export function useTabTrap(rootRef: RefObject<HTMLElement | null>, enabled = true): void {
   useEffect(() => {

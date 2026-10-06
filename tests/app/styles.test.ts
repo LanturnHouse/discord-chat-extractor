@@ -83,7 +83,8 @@ describe('base.css', () => {
 
   it('keeps a visible 2px brand focus ring for the keyboard', () => {
     expect(base).toMatch(/:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--focus-ring\)/);
-    expect(theme.get('--focus-ring')).toBe('var(--brand)');
+    // Lighter than --brand on purpose (3:1 against every surface, see tests/app/components/contrast.test.ts).
+    expect(theme.get('--focus-ring')).toBe('#8c96ff');
   });
 
   it('resets buttons, styles the selection and has a visually-hidden utility', () => {
@@ -98,7 +99,9 @@ describe('layout.css', () => {
   const layout = stripComments(read('src/app/styles/layout.css'));
 
   it('fills the viewport', () => {
-    expect(layout).toMatch(/#root\s*\{[^}]*height:\s*100vh;[^}]*height:\s*100dvh/);
+    // Not 100vh: a horizontal scrollbar below the minimum width would make a 100vh page scroll vertically too.
+    expect(layout).toMatch(/#root\s*\{[^}]*height:\s*100%/);
+    expect(layout).not.toMatch(/#root\s*\{[^}]*height:\s*100d?vh/);
     expect(layout).toMatch(/#root\s*\{[^}]*min-width:\s*var\(--min-app-width\)/);
   });
 

@@ -47,12 +47,30 @@ export function shouldShowJumpToLatest(metrics: ScrollMetrics, viewports: number
 }
 
 /**
- * True when a scroll event came from the user and not from our own pin: the list is away from the bottom *and* not where
- * the last pin left it. (A pin that was overtaken by content growing before its scroll event arrives still sits at
- * `lastPinnedTop`, so it is not mistaken for the user.)
+ * True when a scroll event can only have come from the user (find in page, a text selection dragged past the edge, a focused
+ * link scrolled into view): the list is away from the bottom, not where our last pin left it, and the layout is the one the
+ * pin saw (`pinnedAt` = the metrics right after it).
+ *
+ * A reflow (window resize, images, fonts, rows leaving `content-visibility` skipping) changes `scrollHeight` / `clientHeight`,
+ * and Chrome's scroll anchoring then moves `scrollTop` by itself and fires a scroll event that looks exactly like a user
+ * scrolling away from the bottom. Such an event says nothing about the user: the size notification that follows pins the
+ * list again. (A wheel, touch drag or key that moves up, a press on the scrollbar and the focus moving to something out of view
+ * do not depend on this: they unpin on their own, before any scroll event.)
  */
-export function userScrolledAway(metrics: ScrollMetrics, lastPinnedTop: number): boolean {
-  return !isNearBottom(metrics) && Math.abs(metrics.scrollTop - lastPinnedTop) > PIN_TOLERANCE_PX;
+export function userScrolledAway(metrics: ScrollMetrics, pinnedAt: ScrollMetrics): boolean {
+  if (isNearBottom(metrics)) return false;
+  if (metrics.scrollHeight !== pinnedAt.scrollHeight || metrics.clientHeight !== pinnedAt.clientHeight) return false;
+  return Math.abs(metrics.scrollTop - pinnedAt.scrollTop) > PIN_TOLERANCE_PX;
+}
+
+/** Keys that move the list towards older messages (the others only ever move it down, which cannot end a bottom pin). */
+export function keyScrollsUp(key: string, shiftKey: boolean): boolean {
+  return key === 'PageUp' || key === 'Home' || key === 'ArrowUp' || (key === ' ' && shiftKey);
+}
+
+/** A box (viewport coordinates) that is not entirely inside `view`: focusing it makes the browser scroll it into view. */
+export function isOutsideView(box: Pick<DOMRect, 'top' | 'bottom'>, view: Pick<DOMRect, 'top' | 'bottom'>): boolean {
+  return box.top < view.top || box.bottom > view.bottom;
 }
 
 export interface OlderLoadInput extends ScrollMetrics {

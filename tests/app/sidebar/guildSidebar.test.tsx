@@ -329,7 +329,7 @@ describe('folding categories', () => {
     expect(appStore.getState().collapsedCategories).toEqual({});
   });
 
-  it('keeps the open channel and the ticked channels visible inside a folded category', async () => {
+  it('keeps only the open channel (with its threads) visible inside a folded category', async () => {
     await setup();
     await openBig();
     await act(async () => {
@@ -343,13 +343,110 @@ describe('folding categories', () => {
     const folded = layout();
     const category = folded.indexOf('[💬 일반 GENERAL]');
     const next = folded.indexOf('[🔊 VOICE 음성]');
-    // `random` (open) and `memes` (ticked) stay; the ticked thread brings its parent `general` back, with its threads.
-    expect(folded.slice(category + 1, next)).toEqual(['general', '  v2.0 릴리즈 노트 토론', '  점심 메뉴 투표 🍜', 'random', 'memes']);
+    // Ticked rows do not stay: `memes`, `general` and the ticked thread are gone, only the open `random` is left.
+    expect(folded.slice(category + 1, next)).toEqual(['random']);
 
-    // Un-ticking hides a row that is neither open nor ticked any more.
+    // Opening another channel of the folded category replaces it; its threads come along.
+    fireEvent.click(button(GENERAL));
+    await act(async () => {
+      fireEvent.click(button('general'));
+    });
+    await settle();
+    fireEvent.click(button(GENERAL));
+    const second = layout();
+    expect(second.slice(second.indexOf('[💬 일반 GENERAL]') + 1, second.indexOf('[🔊 VOICE 음성]'))).toEqual([
+      'general',
+      '  v2.0 릴리즈 노트 토론',
+      '  점심 메뉴 투표 🍜',
+    ]);
+  });
+
+  it('a fold hides exactly what aria-expanded says, whatever is ticked: ticking never unfolds or re-shows rows', async () => {
+    await setup();
+    await openBig();
+    const expanded = (): string | null => button('💻 DEVELOPMENT').getAttribute('aria-expanded');
+
+    // Everything in the category ticked first, then folded: the rows go away although every one of them is ticked.
+    fireEvent.click(categoryBox('💻 DEVELOPMENT'));
+    expect(checked(categoryBox('💻 DEVELOPMENT'))).toBe('true');
+    const unfolded = layout();
+    fireEvent.click(button('💻 DEVELOPMENT'));
+    expect(expanded()).toBe('false');
+    const folded = layout();
+    expect(folded).not.toContain('frontend');
+    expect(folded.length).toBeLessThan(unfolded.length - 5);
+
+    // Ticking and un-ticking the folded category, or the whole server, changes neither the rows nor the fold state.
+    fireEvent.click(categoryBox('💻 DEVELOPMENT'));
+    expect(checked(categoryBox('💻 DEVELOPMENT'))).toBe('false');
+    expect(layout()).toEqual(folded);
+    fireEvent.click(categoryBox('💻 DEVELOPMENT'));
+    fireEvent.click(box(SERVER_BOX));
+    await settle();
+    expect(layout()).toEqual(folded);
+    expect(expanded()).toBe('false');
+    expect(button('💻 DEVELOPMENT').closest('li')?.classList.contains('sb-category--collapsed')).toBe(true);
+
+    // The other direction: fold first, tick after.
+    fireEvent.click(button(GENERAL));
+    const generalFolded = layout();
+    expect(generalFolded).not.toContain('random');
+    fireEvent.click(categoryBox(GENERAL));
+    fireEvent.click(categoryBox(GENERAL));
+    expect(layout()).toEqual(generalFolded);
+    expect(button(GENERAL).getAttribute('aria-expanded')).toBe('false');
+    expect(appStore.getState().collapsedCategories[MOCK_IDS.generalCategory]).toBe(true);
+  });
+
+  it('the keyboard focus never falls to <body>: no control of a visible row removes its own row', async () => {
+    await setup();
+    await openBig();
     fireEvent.click(channelBox('memes'));
-    expect(layout()).not.toContain('memes');
+    await act(async () => {
+      fireEvent.click(button('random'));
+    });
+    await settle();
+    fireEvent.click(button(GENERAL));
     expect(layout()).toContain('random');
+
+    // The reported case: a ticked row of a folded category used to stay, and un-ticking it by keyboard removed it from under
+    // the focus. Such a row has no checkbox to focus any more (the selection itself is untouched).
+    expect(layout()).not.toContain('memes');
+    expect(within(sidebar()).queryByRole('checkbox', { name: 'Select memes for export' })).toBeNull();
+    expect(Object.keys(appStore.getState().selection)).toHaveLength(1);
+
+    // What is left in the folded category is the open row: un-ticking it keeps the row, so the focus stays on the very control
+    // that was pressed.
+    const randomBox = channelBox('random');
+    randomBox.focus();
+    expect(document.activeElement).toBe(randomBox);
+    fireEvent.click(randomBox);
+    expect(checked(randomBox)).toBe('true');
+    expect(randomBox.isConnected).toBe(true);
+    fireEvent.click(randomBox);
+    expect(checked(randomBox)).toBe('false');
+    expect(randomBox.isConnected).toBe(true);
+    expect(document.activeElement).toBe(randomBox);
+
+    // Ticking a row of a folded category is impossible now (it has no row), and ticking the category box does not touch the rows.
+    const header = categoryBox(GENERAL);
+    header.focus();
+    fireEvent.click(header);
+    fireEvent.click(header);
+    expect(header.isConnected).toBe(true);
+    expect(document.activeElement).toBe(header);
+    expect(document.activeElement).not.toBe(document.body);
+
+    // Every checkbox of every visible row survives its own toggle (a ticked box can only be un-ticked where it can still be seen).
+    for (const checkbox of within(sidebar()).getAllByRole('checkbox')) {
+      if (checkbox.getAttribute('aria-label') === SERVER_BOX) continue;
+      checkbox.focus();
+      fireEvent.click(checkbox);
+      expect(checkbox.isConnected, checkbox.getAttribute('aria-label') ?? '').toBe(true);
+      expect(document.activeElement).toBe(checkbox);
+      fireEvent.click(checkbox);
+      expect(checkbox.isConnected).toBe(true);
+    }
   });
 
   it('keeps the fold state when the server is left and opened again', async () => {
@@ -554,6 +651,37 @@ describe('locked channels', () => {
     expect(appStore.getState().selection).toEqual({});
     expect(button(name).getAttribute('aria-current')).toBe('page');
   });
+
+  it('the keyboard focus on the box of a channel that gets locked moves to its row instead of being dropped to <body>', async () => {
+    await setup();
+    await openBig();
+    const name = '비공개-라운지';
+    const checkbox = channelBox(name);
+    act(() => checkbox.focus());
+    expect(document.activeElement).toBe(checkbox);
+
+    await act(async () => {
+      fireEvent.click(button(name)); // the 403 answer locks the row and takes the box away
+    });
+    await settle();
+    expect(within(rowOf(name)).queryByRole('checkbox')).toBeNull();
+    expect(document.activeElement).toBe(button(name));
+  });
+
+  it('a lock that arrives while the focus is elsewhere does not steal it', async () => {
+    await setup();
+    await openBig();
+    const name = '비공개-라운지';
+    const other = channelBox('rules');
+    act(() => other.focus());
+
+    await act(async () => {
+      fireEvent.click(button(name));
+    });
+    await settle();
+    expect(within(rowOf(name)).queryByRole('checkbox')).toBeNull();
+    expect(document.activeElement).toBe(other);
+  });
 });
 
 describe('forum channels', () => {
@@ -588,7 +716,7 @@ describe('forum channels', () => {
     expect(layout()).toEqual(rows);
   });
 
-  it('a ticked or open post stays visible while its forum is folded', async () => {
+  it('only the open post stays visible while its forum is folded; ticked posts go away with the fold', async () => {
     await setup();
     await openBig();
     const rows = layout();
@@ -601,7 +729,11 @@ describe('forum channels', () => {
 
     fireEvent.click(button('질문-게시판'));
     const folded = layout();
-    expect(folded.slice(folded.indexOf('질문-게시판') + 1, folded.indexOf('design'))).toEqual([`  ${posts[0]}`, `  ${posts[2]}`]);
+    expect(folded.slice(folded.indexOf('질문-게시판') + 1, folded.indexOf('design'))).toEqual([`  ${posts[0]}`]);
+    expect(button('질문-게시판').getAttribute('aria-expanded')).toBe('false');
+    expect(checked(channelBox(posts[0]))).toBe('false');
+    // The ticked post is still selected, only its row is folded away.
+    expect(appStore.getState().selection[(bigTree().threadsByParent[MOCK_IDS.forumChannel] ?? [])[2].id]).toBeDefined();
   });
 
   it('a post opens like a channel', async () => {

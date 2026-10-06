@@ -1,0 +1,109 @@
+/*
+ * Forced colours (Windows "contrast themes"). The browser swaps every colour for the user's palette and drops shadows, so a state
+ * that is told by a background colour alone vanishes: the white pill of the open server, the tint of the open row, filled
+ * buttons, the checked segment of a toggle, a blue checkbox. Here those states get a shape - a border or the Highlight pair -
+ * built from system colours, which the browser keeps.
+ *
+ * Imported by App.tsx after every component stylesheet: the rules below must win over theirs at equal specificity. Outlines are
+ * left alone (the focus ring is one); static frames use `border`, or `outline` on elements that never take the focus.
+ */
+@media (forced-colors: active) {
+  /* --- server rail ---------------------------------------------------------------------------------------------- */
+
+  .rail__pill {
+    background-color: CanvasText;
+  }
+
+  .rail__item--active .rail__icon {
+    border: 2px solid Highlight;
+  }
+
+  .rail__badge {
+    outline: 1px solid CanvasText;
+    outline-offset: -1px;
+  }
+
+  .rail-tooltip {
+    border: 1px solid CanvasText;
+  }
+
+  /*
+   * --- sidebar: the open channel / conversation -----------------------------------------------------------------------
+   * A frame, not a Highlight fill: the browser paints a Canvas-coloured plate behind any text that sits on an author-coloured
+   * background, which would turn the name of a Highlight-filled row into black on black. The frame goes on the row (<li>), the
+   * focus ring on the button inside it.
+   */
+
+  .sb-row--active {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  /* --- checkbox: a ticked box is a filled one --------------------------------------------------------------------- */
+
+  .dce-checkbox[data-state='all'],
+  .dce-checkbox[data-state='some'],
+  .dce-checkbox[data-state='all']:hover:not(:disabled),
+  .dce-checkbox[data-state='some']:hover:not(:disabled) {
+    border-color: Highlight;
+    background-color: Highlight;
+    color: HighlightText;
+  }
+
+  /* --- buttons and chips drawn with a fill only -------------------------------------------------------------------- */
+
+  .dce-button:not(.dce-button--link),
+  .chat-jump,
+  .topbar__split,
+  .topbar__chip,
+  .topbar__demo--exit {
+    border: 1px solid ButtonText;
+  }
+
+  .chat-pill {
+    border: 1px solid CanvasText;
+  }
+
+  .topbar__chip-dot {
+    background-color: Highlight;
+  }
+
+  /* --- surfaces that stand out by a shadow and a fill only: dialogs and cards ---------------------------------------- */
+
+  /* Without a frame the edge of the export dialog vanishes against the dimmed page, which is cut straight at it. */
+  .topbar-dialog,
+  .app-fatal,
+  .onboarding__card {
+    border: 1px solid CanvasText;
+  }
+
+  /* --- segmented toggles, quick picks and option cards: the chosen one is filled ----------------------------------- */
+
+  .topbar-radio--segmented {
+    border: 1px solid ButtonText;
+  }
+
+  /* `forced-color-adjust: none`: otherwise the Canvas plate behind the text hides it on the Highlight fill (see above). */
+  .topbar-radio--segmented .topbar-radio__option[aria-checked='true'],
+  .topbar-count__chip[aria-pressed='true'] {
+    forced-color-adjust: none;
+    background-color: Highlight;
+    color: HighlightText;
+  }
+
+  .topbar-radio--cards .topbar-radio__option[aria-checked='true'] {
+    border-color: Highlight;
+    border-width: 2px;
+  }
+
+  /* --- messages ---------------------------------------------------------------------------------------------------- */
+
+  .msg-reaction--me {
+    border-width: 2px;
+  }
+
+  /* A hidden spoiler has no background any more: without a frame the gap in the line would look like a rendering bug. */
+  .md-spoiler:not(.md-spoiler-revealed) {
+    border: 1px dashed CanvasText;
+  }
+}

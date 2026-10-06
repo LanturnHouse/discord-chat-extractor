@@ -8,6 +8,7 @@ import {
   selectChannelMessages,
   selectConnectedAs,
   selectDmCheck,
+  selectEffectiveScope,
   selectFilteredDms,
   selectGuildCheck,
   selectGuildTree,
@@ -92,6 +93,14 @@ export function useSelectedTargets(): ExportTarget[] {
 /** The channel's own export scope, or undefined while it follows the default settings. */
 export function useScopeOverride(channelId: Snowflake): ExportScope | undefined {
   return useAppStore((state) => selectScopeOverride(state, channelId));
+}
+
+/**
+ * What a selected channel will be exported with: its own scope when it has one, otherwise the default settings - live, so a
+ * channel without a scope of its own follows every later change of the defaults.
+ */
+export function useEffectiveScope(channelId: Snowflake): ExportScope {
+  return useAppStore((state) => selectEffectiveScope(state, channelId));
 }
 
 /** How many selected channels export with a scope of their own. */

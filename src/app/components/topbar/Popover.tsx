@@ -1,7 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { focusInitial, useEscapeKey, useTabTrap, wrapFromGuard } from './focus';
 import { useLatest } from './hooks';
+import { PressGateContext, type AfterPress } from './pressGate';
 
 export interface PopoverProps {
   /** Positions the popover: it opens under this element, right edges aligned (kept inside the window). Clicks on it never count as "outside". */
@@ -60,6 +61,29 @@ export function Popover({
   const close = useLatest(onClose);
   const isDialog = role === 'dialog';
 
+  // Work that fields inside the panel want done while a press that started in the panel is still down (see `AfterPress`).
+  const pressed = useRef(false);
+  const waiting = useRef<Array<() => void>>([]);
+  const afterPress = useCallback<AfterPress>((action) => {
+    if (pressed.current) waiting.current.push(action);
+    else action();
+  }, []);
+  const onPressStart = (): void => {
+    if (pressed.current) return;
+    pressed.current = true;
+    const release = (): void => {
+      document.removeEventListener('pointerup', release, true);
+      document.removeEventListener('pointercancel', release, true);
+      pressed.current = false;
+      const queued = waiting.current;
+      waiting.current = [];
+      for (const action of queued) action();
+    };
+    // On the document: the button is often let go outside the panel, and the panel may be gone by then.
+    document.addEventListener('pointerup', release, true);
+    document.addEventListener('pointercancel', release, true);
+  };
+
   useLayoutEffect(() => {
     const anchor = anchorRef.current;
     if (anchor === null) return undefined;
@@ -86,6 +110,10 @@ export function Popover({
       const target = event.target;
       if (!(target instanceof Node)) return;
       if (panelRef.current?.contains(target) === true || anchorRef.current?.contains(target) === true) return;
+      // This runs before the browser moves the focus, and a field that is removed while it has the focus never gets its blur: a
+      // half-typed date would be gone without a trace. Leaving the field first lets it report what it holds.
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && panelRef.current?.contains(active) === true) active.blur();
       close.current();
     };
     document.addEventListener('pointerdown', onPointerDown, true);
@@ -119,10 +147,13 @@ export function Popover({
       tabIndex={isDialog ? -1 : undefined}
       className={classes}
       style={{ top: place.top, left: place.left, width, maxHeight }}
+      onPointerDownCapture={onPressStart}
     >
-      {isDialog ? guard('start') : null}
-      {children}
-      {isDialog ? guard('end') : null}
+      <PressGateContext.Provider value={afterPress}>
+        {isDialog ? guard('start') : null}
+        {children}
+        {isDialog ? guard('end') : null}
+      </PressGateContext.Provider>
     </div>,
     document.body,
   );

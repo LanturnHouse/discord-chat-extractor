@@ -132,7 +132,7 @@ A mode for trying the screen and the export without a Discord account. It contai
 **2. Channel list (second column)**
 
 - When you open a server **for the first time**, its categories and channels are fetched (you briefly see a placeholder).
-- Click a category name to fold or unfold it.
+- Click a category name to fold or unfold it. A folded category keeps only **the channel you currently have open** (and its threads); channels you ticked are hidden too. Check the selection on the category's checkbox and the number badge on the server icon.
 - You see text channels (#), announcement channels (megaphone), and voice and stage channels (their text chat).
 - **Forum and media channels** have no messages, only posts. Click one to fold or unfold its list of posts, and click a post (an active thread) to open it. Threads shown indented under ordinary channels only appear in demo mode ([known limitations](../README.en.md#known-limitations)).
 - A channel that your roles are computed not to allow is dimmed, has a padlock and no checkbox. Clicking it shows "You can't view this channel".
@@ -240,12 +240,12 @@ If you press **Download** while a date or number is not valid, the export does n
 
 For exporting several channels where one needs a different range. For example the newest 200 for one channel and everything for the rest.
 
-![The selection list with one channel's gear pressed, "Use common settings" switched off and "Limit to N" chosen](images/en/04-channel-settings.png)
+![The selection list with one channel's gear pressed and "Limit to N" chosen](images/en/04-channel-settings.png)
 
 1. Press **N selected** to open the selection list.
 2. Press the **gear** on the channel's row (accessible name "Export settings for …"). A settings panel unfolds under the row. Only one panel is open at a time.
-3. Untick **Use common settings**; it starts as a copy of the current common values. Change the date range and the number of messages for this channel only. While it uses the common settings the panel shows "Common settings: …" with what they are now.
-4. To undo, press **Reset to common settings** or tick **Use common settings** again.
+3. The panel shows the **date range** (start and end date) and the **number of messages** right away. At first it holds the current common values and follows them if you change the common settings. The moment you change the range or the number, this channel gets its own settings (a summary appears under its name and the gear lights up). Setting the values back to the common ones does not undo that: the channel keeps its own settings until you reset it.
+4. To undo, press **Reset to common settings** in the panel. The link only appears while the channel has its own settings.
 
 Good to know:
 
@@ -339,7 +339,7 @@ If an export is running, or has finished with results you have not saved yet, cl
 | CSV | `.csv` | Excel (use the import), scripts, databases | Table data |
 | JSON | `.json` | Programs, any text editor | All the raw data |
 
-Every format is **UTF-8**, and times are written in **your browser's time zone** as `YYYY-MM-DD HH:mm:ss` (JSON is the exception, it uses UTC `…Z`). Fixed text such as headers and labels follows the [language setting](#language). The examples below use the made-up data of demo mode.
+Every format is **UTF-8**, and times are written in **your browser's time zone**. TXT, CSV and Excel use `YYYY-MM-DD HH:mm:ss`, Markdown uses a heading per day plus `HH:mm:ss`, and HTML shows each message's time the way the app does (for example `10/05/2026 8:53 PM`), with `YYYY-MM-DD HH:mm:ss` only in its header and footer (JSON is the exception, it uses UTC `…Z`). Fixed text such as headers and labels follows the [language setting](#language). The examples below use the made-up data of demo mode.
 
 ### HTML
 

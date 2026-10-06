@@ -216,7 +216,8 @@
   font-weight: 600;
   line-height: 18px;
   overflow-wrap: anywhere;
-  transform: translateY(-50%);
+  /* `--tooltip-shift` (RailTooltip.tsx) moves a tall box back into the window; the arrow keeps pointing at the icon. */
+  transform: translateY(calc(-50% + var(--tooltip-shift, 0px)));
   animation: rail-tooltip-in 0.1s ease-out;
   pointer-events: none;
 }
@@ -224,7 +225,7 @@
 .rail-tooltip::before {
   content: '';
   position: absolute;
-  top: calc(50% - 5px);
+  top: clamp(5px, calc(50% - 5px - var(--tooltip-shift, 0px)), calc(100% - 15px));
   left: -5px;
   border-style: solid;
   border-width: 5px 5px 5px 0;

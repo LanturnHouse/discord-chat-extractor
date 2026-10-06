@@ -27,27 +27,22 @@ export function isContainer(node: ChannelNode): boolean {
  * The visible rows of a server in Discord's order: channels without a category, then every category followed by its channels,
  * each channel followed by its threads / forum posts.
  *
- * A folded category hides its channels, except the open one and the ones ticked for export (the user must keep seeing what
- * is selected); a channel stays as context when one of its threads is such a row. A channel that is shown brings its threads
- * along, except forum / media posts, which are listed only while the forum is unfolded and its category is not folded (the
- * open and ticked posts always stay). `collapsed` holds the ids of folded categories and forums.
+ * A folded category hides all of its channels except the open one (the user must not lose sight of where they are); the parent
+ * of an open thread / post stays as its context. What is ticked for export is NOT kept visible: the category's tri-state box
+ * and the badge on the rail already show it, and a fold that cannot fold would contradict `aria-expanded`. A channel that is
+ * shown brings its threads along, except forum / media posts, which are listed only while the forum is unfolded and its
+ * category is not folded (the open post always stays). `collapsed` holds the ids of folded categories and forums.
  */
-export function buildTreeRows(
-  tree: GuildTree,
-  collapsed: Readonly<Record<Snowflake, true>>,
-  activeId: Snowflake | null,
-  selection: Readonly<Record<Snowflake, unknown>>,
-): TreeRow[] {
+export function buildTreeRows(tree: GuildTree, collapsed: Readonly<Record<Snowflake, true>>, activeId: Snowflake | null): TreeRow[] {
   const rows: TreeRow[] = [];
-  const kept = (id: Snowflake): boolean => id === activeId || Object.hasOwn(selection, id);
 
   const pushChannel = (channel: ChannelNode, categoryFolded: boolean): void => {
     const threads = tree.threadsByParent[channel.id] ?? [];
     const container = isContainer(channel);
     const postsFolded = container && collapsed[channel.id] === true;
-    const keptThreads = threads.filter((thread) => kept(thread.id));
-    if (categoryFolded && !kept(channel.id) && keptThreads.length === 0) return;
-    const shownThreads = container && (categoryFolded || postsFolded) ? keptThreads : threads;
+    const openThreads = threads.filter((thread) => thread.id === activeId);
+    if (categoryFolded && channel.id !== activeId && openThreads.length === 0) return;
+    const shownThreads = container && (categoryFolded || postsFolded) ? openThreads : threads;
 
     rows.push({ kind: 'channel', node: channel, depth: 0, expanded: container ? !postsFolded : null });
     for (const thread of shownThreads) rows.push({ kind: 'channel', node: thread, depth: 1, expanded: null });

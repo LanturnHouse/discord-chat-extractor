@@ -5,6 +5,7 @@ import { buildDmNodes, toGuildNode } from '@/lib/discord/tree';
 import type { GuildSummary, User } from '@/lib/discord/types';
 import { readBrowserLanguage, resolveLocale } from '../i18n/core';
 import { isAbortError, isAuthError, type Session, type StoreContext } from './context';
+import { relocalizeFailures } from './failures';
 import { enterNeedsToken, failBoot, handleAuthFailure, resetData } from './session';
 import type { AppActions } from './types';
 
@@ -42,13 +43,13 @@ export function createBootActions(ctx: StoreContext): BootActions {
   async function finishBoot(client: DiscordClient, me: User, mode: 'live' | 'demo', session: Session): Promise<void> {
     set({ client, me, mode });
     if (!(await loadMetadata(client, session))) return;
-    set({ status: 'ready', tokenDetected: false, fatalError: null });
+    set({ status: 'ready', tokenDetected: false, fatalError: null, fatalDetail: null });
   }
 
   async function connectDemo(): Promise<void> {
     const session = runtime.startSession();
     resetData(ctx);
-    set({ mode: 'demo', status: 'booting', fatalError: null });
+    set({ mode: 'demo', status: 'booting', fatalError: null, fatalDetail: null });
     try {
       const { client, me } = await deps.loadDemo();
       if (!session.isCurrent()) return;
@@ -63,7 +64,7 @@ export function createBootActions(ctx: StoreContext): BootActions {
     const session = runtime.startSession();
     resetData(ctx);
     // The onboarding screen stays up while a freshly captured token is being checked ("token detected").
-    if (get().status !== 'needs-token') set({ status: 'booting', fatalError: null });
+    if (get().status !== 'needs-token') set({ status: 'booting', fatalError: null, fatalDetail: null });
     set({ mode: 'live' });
 
     let validated = false;
@@ -145,7 +146,7 @@ export function createBootActions(ctx: StoreContext): BootActions {
 
     async retry() {
       if (get().status !== 'fatal') return;
-      set({ status: 'booting', fatalError: null });
+      set({ status: 'booting', fatalError: null, fatalDetail: null });
       try {
         await runBoot();
       } catch (error) {
@@ -156,7 +157,7 @@ export function createBootActions(ctx: StoreContext): BootActions {
     async initWithClient(client, me) {
       const session = runtime.startSession();
       resetData(ctx);
-      set({ platform: get().platform ?? deps.getPlatform(), status: 'booting', fatalError: null });
+      set({ platform: get().platform ?? deps.getPlatform(), status: 'booting', fatalError: null, fatalDetail: null });
       try {
         await finishBoot(client, me, client.kind === 'mock' ? 'demo' : 'live', session);
       } catch (error) {
@@ -173,7 +174,9 @@ export function createBootActions(ctx: StoreContext): BootActions {
       const defined = Object.fromEntries(Object.entries(partial).filter(([, value]) => value !== undefined));
       const next = normalizePrefs({ ...current, ...defined });
       if (next.exportFormat === current.exportFormat && next.htmlTheme === current.htmlTheme && next.locale === current.locale) return;
-      set({ prefs: next, locale: resolveLocale(next.locale, readBrowserLanguage()) });
+      const locale = resolveLocale(next.locale, readBrowserLanguage());
+      // The errors on screen are sentences in the old language: they say themselves again in the new one.
+      set((state) => ({ prefs: next, locale, ...(locale === state.locale ? {} : relocalizeFailures(state, locale)) }));
       const platform = get().platform ?? deps.getPlatform();
       void platform.savePrefs(next).catch(() => undefined);
     },

@@ -141,6 +141,27 @@ describe('setExportLimit / setChannelScope', () => {
     expect(selectEffectiveScope(store.getState(), MOCK_IDS.edge199Channel)).toEqual(scope());
   });
 
+  it('a channel without an override follows every later change of the defaults; one with an override - even an equal one - does not', async () => {
+    const { store } = await bootWithSelection([MOCK_IDS.edge199Channel, MOCK_IDS.edge200Channel]);
+    store.getState().setExportLimit(100);
+    // An override that equals the defaults at this moment is an override all the same: it is only removed by `null`.
+    store.getState().setChannelScope(MOCK_IDS.edge200Channel, scope({ limit: 100 }));
+    expect(selectHasOverride(store.getState(), MOCK_IDS.edge200Channel)).toBe(true);
+    expect(selectOverrideCount(store.getState())).toBe(1);
+
+    store.getState().setExportAfter('2026-01-01T00:00:00.000Z');
+    store.getState().setExportLimit(7);
+    const state = store.getState();
+    expect(selectEffectiveScope(state, MOCK_IDS.edge199Channel)).toBe(state.exportSettings);
+    expect(selectEffectiveScope(state, MOCK_IDS.edge199Channel)).toEqual(scope({ after: '2026-01-01T00:00:00.000Z', limit: 7 }));
+    expect(selectEffectiveScope(state, MOCK_IDS.edge200Channel)).toEqual(scope({ limit: 100 }));
+    expect(selectOverrideCount(state)).toBe(1);
+
+    store.getState().setChannelScope(MOCK_IDS.edge200Channel, null);
+    expect(selectEffectiveScope(store.getState(), MOCK_IDS.edge200Channel)).toBe(store.getState().exportSettings);
+    expect(selectOverrideCount(store.getState())).toBe(0);
+  });
+
   it('stores a copy: changing the caller\'s object afterwards changes nothing', async () => {
     const { store } = await bootWithSelection([MOCK_IDS.edge199Channel]);
     const mine = scope({ limit: 5 });

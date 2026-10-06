@@ -1,4 +1,4 @@
-import { memo, type ReactElement } from 'react';
+import { memo, useRef, type ReactElement } from 'react';
 import { useStrings } from '@/app/i18n';
 import { useAppStore, useChannelCheck, useIsForbidden } from '@/app/state';
 import type { DmNode } from '@/lib/discord/model';
@@ -27,6 +27,7 @@ export const DmRow = memo(function DmRow({ dm, onOpen, onToggle }: DmRowProps): 
   const active = useAppStore((state) => state.activeChannelId === dm.id);
   const check = useChannelCheck(dm.id);
   const forbidden = useIsForbidden(dm.id);
+  const main = useRef<HTMLButtonElement>(null);
   // Discord counts yourself among the members; `recipients` leaves you out.
   const members = dm.kind === 'group-dm' ? dm.recipients.length + 1 : null;
 
@@ -43,6 +44,7 @@ export const DmRow = memo(function DmRow({ dm, onOpen, onToggle }: DmRowProps): 
   return (
     <li className={classes.join(' ')} data-sb-row="">
       <button
+        ref={main}
         type="button"
         className="sb-row__main sb-dm__main"
         data-sb-nav=""
@@ -67,6 +69,8 @@ export const DmRow = memo(function DmRow({ dm, onOpen, onToggle }: DmRowProps): 
           state={check}
           ariaLabel={t.selectForExport(dm.name)}
           revealOnHover
+          // A 403 on this conversation takes the box away: the focus stays in the row.
+          focusOnRemove={main}
           onChange={() => onToggle(dm.id)}
         />
       )}

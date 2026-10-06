@@ -1,16 +1,18 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DOMAttributes, type RefObject } from 'react';
 import { useAppStore, type ChannelMessages } from '@/app/state';
 import type { Message, Snowflake } from '@/lib/discord/types';
 import {
   bottomScrollTop,
   isNearBottom,
+  isOutsideView,
+  keyScrollsUp,
   shouldLoadOlder,
   shouldShowJumpToLatest,
   userScrolledAway,
   type ScrollMetrics,
 } from './scroll';
 
-/** After a smooth "jump to latest" has gone quiet this long, check that the bottom was really reached. */
+/** After a scroll to the bottom (the "jump to latest" button, the End key) has been quiet this long, check that it really got there. */
 const SETTLE_DELAY_MS = 160;
 const MAX_SETTLE_PASSES = 4;
 
@@ -29,13 +31,16 @@ export interface MessageScrollOptions {
   messages: ChannelMessages;
 }
 
+/** The event handlers of the scroll container: between them they decide whether the bottom pin holds (see `useMessageScroll`). */
+export type MessageScrollHandlers = Pick<
+  DOMAttributes<HTMLElement>,
+  'onScroll' | 'onWheel' | 'onTouchStart' | 'onTouchMove' | 'onKeyDown' | 'onPointerDown' | 'onPointerUp' | 'onPointerCancel' | 'onFocus'
+>;
+
 export interface MessageScroll {
   /** The floating "jump to latest" button is visible. */
   showJump: boolean;
-  /** `scroll` event of the container. */
-  onScroll(): void;
-  /** Wheel, touch drag, scroll keys or a press on the scrollbar: the user took over, so the bottom pin ends for good. */
-  onUserScroll(): void;
+  handlers: MessageScrollHandlers;
   jumpToLatest(): void;
   /** The "retry" button of a failed older-page request. */
   retryOlder(): void;
@@ -45,7 +50,10 @@ export interface MessageScroll {
  * The imperative half of the message list, for ONE channel instance (the list is remounted per channel):
  *
  * - pinned to the bottom on first paint and while the content settles (images, fonts, rows rendering their real height
- *   under `content-visibility`), until the user scrolls by themself; after that it never pins again;
+ *   under `content-visibility`) and when the window is resized. The pin ends when the user moves the list up (wheel, touch,
+ *   keys, the scrollbar) or the focus goes to something out of view, and it comes back as soon as the list is at the bottom
+ *   again (scrolled down to it, the "jump to latest" button, a window that grew). So a list that sits at the newest message
+ *   stays there whether or not it was touched before, and a user who moved up is left alone;
  * - loads the next older page when the viewport comes within NEAR_TOP_PX of the top, or when the loaded messages do not
  *   fill the viewport. This is a scroll handler (plus a re-check after every commit and size change) instead of an
  *   IntersectionObserver sentinel on purpose: a sentinel only reports *changes* of visibility, so it would stay silent
@@ -57,8 +65,10 @@ export function useMessageScroll({ scrollerRef, contentRef, channelId, messages 
   const loadOlder = useAppStore((state) => state.loadOlderMessages);
   const [showJump, setShowJump] = useState(false);
   const pinned = useRef(true);
-  /** `scrollTop` right after our last pin: tells our own scroll events from the user's. */
-  const lastPinnedTop = useRef(0);
+  /** The metrics right after our last pin: tells our own and the layout's scroll events from the user's (see `userScrolledAway`). */
+  const pinnedAt = useRef<ScrollMetrics>({ scrollTop: 0, scrollHeight: 0, clientHeight: 0 });
+  /** Where the finger was at the last touch event: the direction of a drag. */
+  const touchY = useRef<number | null>(null);
   /** The message array an older page was already requested for: one automatic request per state, never a loop. */
   const requestedFor = useRef<readonly Message[] | null>(null);
   const latest = useRef(messages);
@@ -68,7 +78,7 @@ export function useMessageScroll({ scrollerRef, contentRef, channelId, messages 
     const element = scrollerRef.current;
     if (element === null) return;
     element.scrollTop = bottomScrollTop(readMetrics(element));
-    lastPinnedTop.current = element.scrollTop;
+    pinnedAt.current = readMetrics(element);
   }, [scrollerRef]);
 
   const loadIfNeeded = useCallback(() => {
@@ -109,20 +119,99 @@ export function useMessageScroll({ scrollerRef, contentRef, channelId, messages 
     }, SETTLE_DELAY_MS);
   }, [scrollerRef]);
 
+  /** On its way to the bottom (the "jump to latest" button, the End key): once it goes quiet, finish what taller rows left short. */
+  const settleAtBottom = useCallback(() => {
+    cancelSettling();
+    settling.current = { timer: undefined, passes: 0 };
+    scheduleSettle();
+  }, [cancelSettling, scheduleSettle]);
+
+  /**
+   * Looks at where the list is. A pinned list that was moved away from the bottom is let go; an unpinned one that is at the
+   * bottom is pinned again, however it got there (and a nudge of a few pixels that ends within the tolerance is no move at all).
+   */
+  const track = useCallback((metrics: ScrollMetrics) => {
+    if (pinned.current) {
+      if (userScrolledAway(metrics, pinnedAt.current)) pinned.current = false;
+    } else if (isNearBottom(metrics)) {
+      pinned.current = true;
+      pinnedAt.current = metrics;
+    }
+  }, []);
+
   const onScroll = useCallback(() => {
     const element = scrollerRef.current;
     if (element === null) return;
     const metrics = readMetrics(element);
-    if (pinned.current && userScrolledAway(metrics, lastPinnedTop.current)) pinned.current = false;
+    track(metrics);
     setShowJump(shouldShowJumpToLatest(metrics));
     loadIfNeeded();
     scheduleSettle();
-  }, [scrollerRef, loadIfNeeded, scheduleSettle]);
+  }, [scrollerRef, track, loadIfNeeded, scheduleSettle]);
 
-  const onUserScroll = useCallback(() => {
+  /**
+   * The pin ends right away, before any scroll event: the layout can be changing under the list, which hides the move from
+   * `userScrolledAway`.
+   */
+  const unpin = useCallback(() => {
     pinned.current = false;
     cancelSettling();
   }, [cancelSettling]);
+
+  /**
+   * The user moves the list towards older messages. When there is nothing above to scroll to (a list that fits, or one at the
+   * very top) the gesture moves nothing and ends nothing.
+   */
+  const leaveBottom = useCallback(() => {
+    const element = scrollerRef.current;
+    if (element !== null && element.scrollTop > 0) unpin();
+  }, [scrollerRef, unpin]);
+
+  /** A press that moved nothing (the thumb of the scrollbar grabbed at the bottom and let go) leaves the list where it was. */
+  const onPointerEnd = useCallback(() => {
+    const element = scrollerRef.current;
+    if (element !== null) track(readMetrics(element));
+  }, [scrollerRef, track]);
+
+  const handlers = useMemo<MessageScrollHandlers>(
+    () => ({
+      onScroll,
+      onWheel: (event) => {
+        if (event.deltaY < 0 && !event.ctrlKey) leaveBottom();
+      },
+      onTouchStart: (event) => {
+        touchY.current = event.touches[0]?.clientY ?? null;
+      },
+      onTouchMove: (event) => {
+        const y = event.touches[0]?.clientY ?? null;
+        const previous = touchY.current;
+        touchY.current = y;
+        // A finger moving down pulls older messages into view.
+        if (y !== null && previous !== null && y > previous) leaveBottom();
+      },
+      onKeyDown: (event) => {
+        if (keyScrollsUp(event.key, event.shiftKey)) leaveBottom();
+        else if (event.key === 'End') settleAtBottom();
+      },
+      // A press on the container itself (not on a row) can only be the scrollbar being grabbed.
+      onPointerDown: (event) => {
+        if (event.target === event.currentTarget) leaveBottom();
+      },
+      onPointerUp: onPointerEnd,
+      onPointerCancel: onPointerEnd,
+      // The browser scrolls a focused element into view unless it is already in it (Tab to a link of an old message), and rows
+      // near the target then render their real height, which passes for a reflow: the pin has to let go before the scroll
+      // events arrive. Chrome scrolls first and dispatches this event after, so look at where the list is now as well as at
+      // where the target is.
+      onFocus: (event) => {
+        const { target, currentTarget } = event;
+        if (target === currentTarget) return;
+        const moved = !isNearBottom(readMetrics(currentTarget));
+        if (moved || isOutsideView(target.getBoundingClientRect(), currentTarget.getBoundingClientRect())) unpin();
+      },
+    }),
+    [onScroll, leaveBottom, unpin, settleAtBottom, onPointerEnd],
+  );
 
   const jumpToLatest = useCallback(() => {
     const element = scrollerRef.current;
@@ -131,10 +220,8 @@ export function useMessageScroll({ scrollerRef, contentRef, channelId, messages 
     const top = bottomScrollTop(readMetrics(element));
     if (typeof element.scrollTo === 'function') element.scrollTo({ top, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
     else element.scrollTop = top;
-    cancelSettling();
-    settling.current = { timer: undefined, passes: 0 };
-    scheduleSettle();
-  }, [scrollerRef, cancelSettling, scheduleSettle]);
+    settleAtBottom();
+  }, [scrollerRef, settleAtBottom]);
 
   const retryOlder = useCallback(() => {
     requestedFor.current = latest.current.items;
@@ -169,5 +256,5 @@ export function useMessageScroll({ scrollerRef, contentRef, channelId, messages 
 
   useEffect(() => cancelSettling, [cancelSettling]);
 
-  return { showJump, onScroll, onUserScroll, jumpToLatest, retryOlder };
+  return { showJump, handlers, jumpToLatest, retryOlder };
 }

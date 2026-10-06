@@ -45,7 +45,8 @@
   --on-brand: #ffffff;
 
   --divider: #3f4147;
-  --focus-ring: var(--brand);
+  /* A lighter brand blue than --brand: at least 3:1 (WCAG 1.4.11) against every surface and row tint the ring is drawn on. */
+  --focus-ring: #8c96ff;
   --selection-bg: rgba(0, 103, 184, 0.7);
 
   /* scrollbars: thin, never the white OS ones */

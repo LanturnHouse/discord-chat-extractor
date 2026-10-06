@@ -18,7 +18,7 @@ export function ServerRail(): ReactElement {
   const { placement, controls } = useRailTooltip();
 
   return (
-    <nav className="app-rail" aria-label={t.navLabel} onScroll={controls.hide} onKeyDown={handleRailKeys}>
+    <nav className="app-rail" aria-label={t.navLabel} onScroll={(event) => controls.scrolled(event.currentTarget)} onKeyDown={handleRailKeys}>
       <DmButton active={dmsActive} tooltip={controls} />
       {guilds.length > 0 ? (
         <>

@@ -4,6 +4,7 @@ import { useAppStore, useOverrideCount, useSelectedTargets, useSelectionCount } 
 import type { Snowflake } from '@/lib/discord/types';
 import type { ExportTarget } from '@/lib/export/types';
 import { Check } from '../common/Icons';
+import { ignoreKeyRepeat } from './focus';
 import { useNumberFormat } from './hooks';
 import { Popover } from './Popover';
 import { useScopeEditing, type ChannelFocusRequest } from './scopeEditing';
@@ -80,6 +81,9 @@ function SelectionList({ anchorRef, id, onClose, initialOpenId }: SelectionListP
   // Esc peels one layer: an unfolded settings panel closes first (the focus goes back to its gear), only then the whole list.
   // `preventDefault` is what keeps the popover's own document-level Esc handler away.
   const onKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
+    // A held Enter must not run on from one button to the next: the focus lands on the next x after a removal, on the first gear
+    // when the list opens from the chip, on the chip when "Clear all" closes the list.
+    ignoreKeyRepeat(event);
     if (event.key !== 'Escape' || openId === null || event.nativeEvent.isComposing) return;
     event.preventDefault();
     gears.current.get(openId)?.focus();
@@ -91,7 +95,10 @@ function SelectionList({ anchorRef, id, onClose, initialOpenId }: SelectionListP
       <div ref={listRef} className="topbar-sel__groups" onKeyDown={onKeyDown}>
         {groups.map((group) => (
           <section key={group.key} className="topbar-sel__group">
-            <h3 className="topbar-sel__heading">{group.title ?? t.directMessages}</h3>
+            {/* A long server name is cut with an ellipsis: the full name is the tooltip, like on the rows below. */}
+            <h3 className="topbar-sel__heading" title={group.title ?? undefined}>
+              {group.title ?? t.directMessages}
+            </h3>
             <ul className="topbar-sel__list">
               {group.targets.map((target) => (
                 <SelectionRow

@@ -18,8 +18,7 @@ export function ChannelTree({ guildId, tree }: ChannelTreeProps): ReactElement {
   const t = useStrings(sidebarStrings);
   const collapsed = useAppStore((state) => state.collapsedCategories);
   const activeId = useAppStore((state) => state.activeChannelId);
-  const selection = useAppStore((state) => state.selection);
-  const rows = useMemo(() => buildTreeRows(tree, collapsed, activeId, selection), [tree, collapsed, activeId, selection]);
+  const rows = useMemo(() => buildTreeRows(tree, collapsed, activeId), [tree, collapsed, activeId]);
 
   if (rows.length === 0) return <p className="sb-empty">{t.noChannels}</p>;
   return (

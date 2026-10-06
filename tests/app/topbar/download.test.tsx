@@ -270,6 +270,35 @@ describe('pressing the main part', () => {
 });
 
 describe('options popover', () => {
+  it('a format card is named by its label alone and described by its description: a screen reader does not read the description twice (QA-LAYOUT-13)', async () => {
+    await start();
+    fireEvent.click(caret());
+    const group = within(optionsPanel()).getByRole('radiogroup', { name: 'Format' });
+    const cards: Array<[string, string]> = [
+      ['HTML', 'Looks like Discord - best for reading (recommended)'],
+      ['TXT', 'Plain text'],
+      ['Markdown', 'For Notion / Obsidian / GitHub'],
+      ['Excel (.xlsx)', 'Excel - sort and filter'],
+      ['CSV', 'Spreadsheet / data analysis'],
+      ['JSON', 'Full raw data for programs'],
+    ];
+    expect(within(group).getAllByRole('radio')).toHaveLength(cards.length);
+    for (const [label, description] of cards) {
+      const card = within(group).getByRole('radio', { name: label });
+      expect(card.getAttribute('aria-labelledby')).not.toBe(card.getAttribute('aria-describedby'));
+      expect(document.getElementById(card.getAttribute('aria-labelledby') ?? '')?.textContent).toBe(label);
+      expect(document.getElementById(card.getAttribute('aria-describedby') ?? '')?.textContent).toBe(description);
+    }
+  });
+
+  it('a segmented choice has no description to point at: it is named by its own text', async () => {
+    await start();
+    fireEvent.click(caret());
+    const dark = within(optionsPanel()).getByRole('radio', { name: 'Dark' });
+    expect(dark.getAttribute('aria-labelledby')).toBeNull();
+    expect(dark.getAttribute('aria-describedby')).toBeNull();
+  });
+
   it('opens under the caret and closes with a second click', async () => {
     await start();
     fireEvent.click(caret());
@@ -773,6 +802,137 @@ describe('options popover', () => {
         fireEvent.click(main());
         expect(startExport).not.toHaveBeenCalled();
         expect(screen.getByRole('alert')).toBeTruthy();
+      });
+
+      describe('a date that is only half typed when the popover goes away (QA-EXP-01)', () => {
+        /** The control holds "10/dd/yyyy": its value is '' and it reports bad input, and no event announced it. */
+        function typePartially(label: 'From' | 'To'): HTMLInputElement {
+          const field = input(label);
+          Object.defineProperty(field, 'validity', { configurable: true, value: { badInput: true } });
+          field.focus();
+          expect(document.activeElement).toBe(field);
+          return field;
+        }
+
+        it.each([
+          ['a press outside the popover (the chat area)', () => fireEvent.pointerDown(document.body)],
+          ['a press on the selection chip', () => fireEvent.pointerDown(screen.getByRole('button', { name: /selected/ }))],
+        ])('%s does not lose it: Download still refuses, and the options reopen with the error', async (_name, close) => {
+          for (const label of ['From', 'To'] as const) {
+            const startExport = await armed();
+            fireEvent.click(caret());
+            typePartially(label);
+
+            close();
+            expect(screen.queryByRole('dialog', { name: /Export options/ })).toBeNull();
+            fireEvent.click(main());
+
+            expect(startExport).not.toHaveBeenCalled();
+            expect(optionsPanel()).toBeTruthy();
+            expect(screen.getByRole('alert').textContent).toBe('Enter a valid date.');
+            expect(input(label).getAttribute('aria-invalid')).toBe('true');
+            expect(appStore.getState().exportJob.status).toBe('idle');
+            cleanup();
+          }
+        });
+
+        it('the field is cleared with its own button, which lets Download start', async () => {
+          const startExport = await armed();
+          fireEvent.click(caret());
+          typePartially('From');
+          fireEvent.pointerDown(document.body);
+          fireEvent.click(main());
+          expect(startExport).not.toHaveBeenCalled();
+
+          fireEvent.click(within(optionsPanel()).getByRole('button', { name: 'Clear start date' }));
+          expect(screen.queryByRole('alert')).toBeNull();
+          fireEvent.click(main());
+          expect(startExport).toHaveBeenCalledTimes(1);
+        });
+
+        it('a press inside the popover does not leave the field', async () => {
+          await armed();
+          fireEvent.click(caret());
+          const field = typePartially('To');
+          fireEvent.pointerDown(optionsPanel());
+          expect(document.activeElement).toBe(field);
+          expect(screen.queryByRole('alert')).toBeNull();
+        });
+      });
+
+      describe('a press on a control below a half-typed date (V-SEL-NEW-1, NEW-EXP-02)', () => {
+        function typePartially(label: 'From' | 'To'): HTMLInputElement {
+          const field = input(label);
+          Object.defineProperty(field, 'validity', { configurable: true, value: { badInput: true } });
+          field.focus();
+          expect(document.activeElement).toBe(field);
+          return field;
+        }
+        /** The press of a mouse: the pointer goes down on the control, which takes the focus - the half-typed field is left. */
+        function press(target: HTMLElement): void {
+          fireEvent.pointerDown(target);
+          act(() => target.focus());
+        }
+        const limitRadio = (): HTMLElement => within(optionsPanel()).getByRole('radio', { name: 'Limit to N' });
+
+        it('the error line appears when the pointer is up, not while it is down: it would push the control away from under the press', async () => {
+          await armed();
+          fireEvent.click(caret());
+          typePartially('From');
+          const limit = limitRadio();
+
+          press(limit);
+          expect(screen.queryByRole('alert')).toBeNull();
+          expect(input('From').getAttribute('aria-invalid')).toBeNull();
+
+          fireEvent.pointerUp(limit);
+          expect(screen.getByRole('alert').textContent).toBe('Enter a valid date.');
+          expect(input('From').getAttribute('aria-invalid')).toBe('true');
+
+          // The click that follows reaches the control that was pressed, and what it chose is kept with the unfinished date.
+          fireEvent.click(limit);
+          expect(limit.getAttribute('aria-checked')).toBe('true');
+          expect(within(optionsPanel()).getByRole('spinbutton')).toBeTruthy();
+          expect(screen.getByRole('alert').textContent).toBe('Enter a valid date.');
+        });
+
+        it.each([
+          ['let go outside the popover', () => fireEvent.pointerUp(document.body)],
+          ['cancelled by the browser (a touch that turned into a scroll)', () => fireEvent.pointerCancel(document.body)],
+        ])('a press that is %s still reports the date, once', async (_name, end) => {
+          await armed();
+          fireEvent.click(caret());
+          typePartially('To');
+          press(limitRadio());
+          expect(screen.queryByRole('alert')).toBeNull();
+
+          end();
+          expect(screen.getAllByRole('alert').map((alert) => alert.textContent)).toEqual(['Enter a valid date.']);
+          // Nothing is left waiting: the next press is a new one.
+          fireEvent.pointerUp(document.body);
+          expect(screen.getAllByRole('alert')).toHaveLength(1);
+        });
+
+        it('leaving the field with the keyboard (no press) reports it at once', async () => {
+          await armed();
+          fireEvent.click(caret());
+          typePartially('From');
+          act(() => limitRadio().focus());
+          expect(screen.getByRole('alert').textContent).toBe('Enter a valid date.');
+        });
+
+        it('a press on the Download button, which lies outside the popover, reports it at once: the click on it already finds the problem', async () => {
+          const startExport = await armed();
+          fireEvent.click(caret());
+          typePartially('From');
+
+          press(main());
+          expect(screen.getByRole('alert').textContent).toBe('Enter a valid date.');
+          fireEvent.pointerUp(main());
+          fireEvent.click(main());
+          expect(startExport).not.toHaveBeenCalled();
+          expect(appStore.getState().exportJob.status).toBe('idle');
+        });
       });
 
       it('asking again while the options are open moves the focus back to the problem', async () => {

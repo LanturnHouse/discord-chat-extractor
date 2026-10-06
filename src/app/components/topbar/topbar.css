@@ -53,7 +53,10 @@
   white-space: nowrap;
 }
 
+/* The parent of a thread is cut off at 40% of the title at most, but a long thread name never squeezes it further: it stays recognisable. */
 .topbar__name--parent {
+  flex-shrink: 0;
+  max-width: 40%;
   color: var(--interactive-normal);
 }
 
@@ -290,10 +293,11 @@
   font-size: 18px;
 }
 
+/* A darker tag, not a lighter one: white text on a white tint over the brand blue is 3.3:1, on a black tint 6.5:1 (8.6:1 on hover). */
 .topbar__format-chip {
   padding: 1px 6px;
   border-radius: var(--radius-xs);
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.2);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -539,8 +543,8 @@
   font-weight: 500;
 }
 
+/* Underline only: the hover tint under the red text is 4.47:1, below the 4.5:1 of the rest state. */
 .topbar-sel__clear:hover {
-  background: var(--bg-modifier-hover);
   text-decoration: underline;
 }
 
@@ -620,6 +624,12 @@
   font-size: 12px;
 }
 
+/* The grey of the description is below 4.5:1 on the lighter hover and selected tints of a card. */
+.topbar-radio--cards .topbar-radio__option:hover .topbar-radio__description,
+.topbar-radio--cards .topbar-radio__option[aria-checked='true'] .topbar-radio__description {
+  color: var(--interactive-normal);
+}
+
 .topbar-radio--cards {
   display: flex;
   flex-direction: column;
@@ -673,6 +683,11 @@
 
 .topbar-radio--segmented .topbar-radio__option[aria-checked='true'] {
   background: var(--brand);
+  color: var(--on-brand);
+}
+
+/* The label sets its own colour (--text-header, 4.15:1 on the brand blue): the selected segment needs the pure white. */
+.topbar-radio--segmented .topbar-radio__option[aria-checked='true'] .topbar-radio__label {
   color: var(--on-brand);
 }
 
@@ -814,24 +829,6 @@
   background: var(--bg-primary);
 }
 
-.topbar-scope__toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-header);
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.topbar-scope__toggle input {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: var(--brand);
-  cursor: pointer;
-}
-
 .topbar-scope__reset {
   align-self: flex-start;
   padding: 4px 8px;
@@ -840,8 +837,8 @@
   font-weight: 500;
 }
 
+/* Underline only: the hover tint under the link blue is 4.2:1, below the 4.8:1 of the rest state. */
 .topbar-scope__reset:hover {
-  background: var(--bg-modifier-hover);
   text-decoration: underline;
 }
 
@@ -924,6 +921,15 @@
   padding: 16px 24px;
   border-radius: 0 0 var(--radius-md) var(--radius-md);
   background: var(--bg-secondary);
+}
+
+/* White on --danger is 3.77:1, too little for 14px text: the resting fill of the red button is the darker shade that --danger has on hover (4.57:1). */
+.topbar-dialog__footer .dce-button--danger {
+  background: var(--danger-hover);
+}
+
+.topbar-dialog__footer .dce-button--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger-hover) 80%, black);
 }
 
 .topbar-dialog__footer .dce-button[aria-disabled='true'] {
@@ -1049,9 +1055,13 @@
   color: var(--warning);
 }
 
-.topbar-targets__row[data-status='error'] .topbar-targets__icon,
-.topbar-targets__row[data-status='error'] .topbar-targets__state {
+.topbar-targets__row[data-status='error'] .topbar-targets__icon {
   color: var(--danger);
+}
+
+/* The 12px word needs the lighter red: --danger is 3.7:1 on the list's surface, --text-danger 5.3:1. */
+.topbar-targets__row[data-status='error'] .topbar-targets__state {
+  color: var(--text-danger);
 }
 
 .topbar-targets__body {

@@ -15,7 +15,7 @@ function installFakeChrome() {
     actionClicked: [] as Listener[],
   };
   const tabs = {
-    query: vi.fn(async (): Promise<Array<{ id: number; url: string; windowId: number }>> => []),
+    query: vi.fn(async (): Promise<Array<{ id: number; url?: string; pendingUrl?: string; windowId: number }>> => []),
     update: vi.fn(async () => ({})),
     create: vi.fn(async () => ({})),
   };
@@ -173,15 +173,47 @@ describe('toolbar click wiring', () => {
     expect(tabs.create).not.toHaveBeenCalled();
   });
 
-  it('falls back to a tabs.query by app url prefix when no context matches', async () => {
+  it('falls back to the tab list when no context matches (a tab Chrome discarded has no live document)', async () => {
     const { registrations, tabs, windows } = await loadWorker();
     tabs.query.mockResolvedValueOnce([{ id: 9, url: `${appUrl}?mock=1`, windowId: 4 }]);
     (registrations.actionClicked[0] as () => void)();
     await flush();
-    expect(tabs.query).toHaveBeenCalledWith({ url: `${appUrl}*` });
+    expect(tabs.query).toHaveBeenCalledWith({});
     expect(tabs.update).toHaveBeenCalledWith(9, { active: true });
     expect(windows.update).toHaveBeenCalledWith(4, { focused: true });
     expect(tabs.create).not.toHaveBeenCalled();
+  });
+
+  it('opens the app again when the tab it opened has navigated away since', async () => {
+    const { registrations, tabs } = await loadWorker();
+    const click = registrations.actionClicked[0] as () => void;
+    tabs.create.mockResolvedValue({ id: 31, windowId: 5 } as never);
+    click();
+    await flush();
+    tabs.query.mockResolvedValue([{ id: 31, url: 'https://discord.com/channels/@me', windowId: 5 }]);
+    click();
+    await flush();
+    expect(tabs.create).toHaveBeenCalledTimes(2);
+    expect(tabs.update).not.toHaveBeenCalled();
+  });
+
+  it('opens a single tab for two clicks in a row on a worker that has just started', async () => {
+    const { registrations, tabs, windows } = await loadWorker();
+    // Chrome lists the new tab by its pending address while its document is not alive yet (getContexts finds nothing).
+    tabs.create.mockImplementation(async () => {
+      tabs.query.mockResolvedValue([{ id: 31, pendingUrl: appUrl, windowId: 5 }]);
+      return { id: 31, windowId: 5 };
+    });
+    const click = registrations.actionClicked[0] as () => void;
+    click();
+    click();
+    await flush();
+    click(); // after the first finished
+    await flush();
+    expect(tabs.create).toHaveBeenCalledTimes(1);
+    expect(tabs.update).toHaveBeenCalledTimes(2);
+    expect(tabs.update).toHaveBeenCalledWith(31, { active: true });
+    expect(windows.update).toHaveBeenCalledWith(5, { focused: true });
   });
 
   it('reports a failure to open the tab without an unhandled rejection or any token data', async () => {

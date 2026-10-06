@@ -635,10 +635,7 @@ describe('LiveDiscordClient: error mapping', () => {
     const error = await errorOf(h.client.getMessages('123'));
     expect(error.kind).toBe(kind);
     expect(error.status).toBe(status);
-    expect(error.message).toContain(String(status));
-    expect(error.message).toContain('Missing Access');
-    expect(error.message).toContain('50001');
-    expect(error.message).toContain('/channels/123/messages');
+    expect(error.message).toBe(`Discord API error ${status} (code 50001): Missing Access`);
     expect(h.calls).toHaveLength(1);
   });
 
@@ -744,6 +741,118 @@ describe('LiveDiscordClient: error mapping', () => {
       },
     });
     expect((await errorOf(h.client.getDmChannels())).kind).toBe('unknown');
+  });
+});
+
+describe('LiveDiscordClient: error messages are safe to paste into a bug report', () => {
+  // Screens map `kind` / `status` to their own wording; `message` is developer text for logs and bug reports, so it must not
+  // carry what identifies the account's data: the request path, its query, or any id.
+  const GUILD = '123456789012345678';
+  const CHANNEL = '234567890123456789';
+  const CURSOR = '345678901234567890';
+
+  const requests: [string, (client: LiveDiscordClient) => Promise<unknown>][] = [
+    ['getMe', (c) => c.getMe()],
+    ['getGuilds', (c) => c.getGuilds()],
+    ['getGuildChannels', (c) => c.getGuildChannels(GUILD)],
+    ['getGuildRoles', (c) => c.getGuildRoles(GUILD)],
+    ['getMyMember', (c) => c.getMyMember(GUILD)],
+    ['getDmChannels', (c) => c.getDmChannels()],
+    ['getMessages (before)', (c) => c.getMessages(CHANNEL, { before: CURSOR, limit: 50 })],
+    ['getMessages (after)', (c) => c.getMessages(CHANNEL, { after: CURSOR, limit: 50 })],
+  ];
+
+  function expectSafe(error: DiscordApiError, label = ''): void {
+    expect(error.message, label).not.toMatch(/\d{9,}/);
+    expect(error.message, label).not.toMatch(/\/(channels|guilds|users)\b/);
+    expect(error.message, label).not.toMatch(/[?&](limit|before|after)=/);
+    expect(error.message, label).not.toMatch(/https?:|discord\.com/);
+    expect(error.message.length, label).toBeLessThan(300);
+  }
+
+  const replies: [string, number, () => Response][] = [
+    ['400 with a Discord body', 400, () => json({ message: 'Invalid Form Body', code: 50035 }, 400)],
+    ['401', 401, () => json({ message: '401: Unauthorized', code: 0 }, 401)],
+    ['403 no access', 403, () => json({ message: 'Missing Access', code: 50001 }, 403)],
+    ['403 Cloudflare page', 403, () => new Response('<html>Access denied</html>', { status: 403 })],
+    ['404', 404, () => json({ message: 'Unknown Channel', code: 10003 }, 404)],
+    ['409', 409, () => json({ message: 'Conflict' }, 409)],
+    ['418 with an empty body', 418, () => new Response('', { status: 418 })],
+    ['503', 503, () => json({ message: 'down' }, 503)],
+  ];
+
+  it.each(requests)('%s: an HTTP error names neither the path, the query nor an id, and carries the numeric status', async (_name, call) => {
+    for (const [label, status, reply] of replies) {
+      const h = setup(Array.from({ length: 5 }, reply));
+      const error = await errorOf(call(h.client));
+      expect(error.status, label).toBe(status);
+      expect(error.message, label).toContain(String(status));
+      expectSafe(error, label);
+    }
+  });
+
+  it("keeps Discord's own wording but replaces the ids it echoes back", async () => {
+    const h = setup([json({ message: `Unknown Channel ${CHANNEL} (guild ${GUILD}), user 1234567890`, code: 10003 }, 404)]);
+    const error = await errorOf(h.client.getMessages(CHANNEL));
+    expect(error.message).toBe('Discord API error 404 (code 10003): Unknown Channel <id> (guild <id>), user <id>');
+  });
+
+  it('says that a 403 without a permission code is no permission error, briefly', async () => {
+    const h = setup([new Response('<html>Access denied</html>', { status: 403 })]);
+    const error = await errorOf(h.client.getMessages(CHANNEL));
+    expect(error.kind).toBe('unknown');
+    expect(error.message).toBe('Discord API error 403 (not a permission error; possibly a temporary block)');
+  });
+
+  it('carries the status of a rate limit it gave up on, and of an answer that is not JSON', async () => {
+    const limited = setup([json({ message: 'You are being rate limited.', retry_after: 600 }, 429)]);
+    const limitedError = await errorOf(limited.client.getMessages(CHANNEL));
+    expect(limitedError).toMatchObject({ kind: 'rate-limited', status: 429, retryAfterMs: 600_000 });
+    expectSafe(limitedError);
+
+    const broken = setup([new Response('<html>oops</html>', { status: 200 })]);
+    const brokenError = await errorOf(broken.client.getMessages(CHANNEL));
+    expect(brokenError).toMatchObject({ kind: 'unknown', status: 200 });
+    expectSafe(brokenError);
+  });
+
+  it('keeps the fail-fast rate-limit error and the search-index error free of ids as well', async () => {
+    const banned = setup([json({ retry_after: 600 }, 429)]);
+    await errorOf(banned.client.getMessages(CHANNEL));
+    const refused = await errorOf(banned.client.getMessages(CHANNEL)); // fails without a request
+    expect(refused.kind).toBe('rate-limited');
+    expect(banned.calls).toHaveLength(1);
+    expectSafe(refused);
+
+    const index = setup([
+      json([{ id: '12', type: 15, name: 'forum' }]),
+      json({ code: 110000, message: 'Index not yet available' }, 202),
+      json({ code: 110000 }, 202),
+      json({ code: 110000 }, 202),
+    ]);
+    const notReady = await errorOf(index.client.getActiveThreads(GUILD));
+    expect(notReady).toMatchObject({ kind: 'unknown', status: 202, code: 110000 });
+    expectSafe(notReady);
+  });
+
+  it('keeps the unexpected-shape, bad-id and network errors free of ids too', async () => {
+    const shapes = setup(Array.from({ length: 4 }, () => json({ nope: true })));
+    for (const call of [() => shapes.client.getGuildChannels(GUILD), () => shapes.client.getGuildRoles(GUILD), () => shapes.client.getMessages(CHANNEL), () => shapes.client.getMe()]) {
+      const error = await errorOf(call());
+      expect(error.kind).toBe('unknown');
+      expectSafe(error);
+    }
+    const badId = await errorOf(setup([]).client.getMessages('../../secret'));
+    expect(badId.kind).toBe('unknown');
+    expect(badId.message).not.toContain('secret');
+    expectSafe(await errorOf(setup(Array.from({ length: 4 }, () => new TypeError('fetch failed'))).client.getMessages(CHANNEL)));
+  });
+
+  it('has no status only where there is no response (network, bad id)', async () => {
+    const network = await errorOf(setup(Array.from({ length: 4 }, () => new TypeError('fetch failed'))).client.getMe());
+    expect(network).toMatchObject({ kind: 'network', status: undefined });
+    const badId = await errorOf(setup([]).client.getGuildChannels('x'));
+    expect(badId.status).toBeUndefined();
   });
 });
 
@@ -1092,16 +1201,53 @@ describe('LiveDiscordClient: getActiveThreads', () => {
       expect(h.urls()).toEqual([`${BASE}/guilds/9/channels`, search('12'), search('12')]);
     });
 
-    it('uses a short default wait when retry_after is missing or 0, and caps a long one', async () => {
-      for (const [retryAfter, expected] of [
-        [undefined, 3000],
-        [0, 3000],
-        [120, 10_000],
-      ] as const) {
+    it('uses a short default wait when retry_after is missing or 0', async () => {
+      for (const retryAfter of [undefined, 0] as const) {
         const h = setup([json(forum), notIndexed(retryAfter), json({ threads: [post('101')] })]);
         expect((await h.client.getActiveThreads('9')).map((t) => t.id)).toEqual(['101']);
-        expect(h.sleeps).toEqual([expected]);
+        expect(h.sleeps).toEqual([1000]);
       }
+    });
+
+    describe('never blocks the caller for long (a server tree load and a select-all wait for this call)', () => {
+      it('does not wait at all when retry_after is longer than the whole budget, and rejects at once', async () => {
+        const h = setup([json(forum), notIndexed(8), json({ threads: [post('101')] })]);
+        const error = await errorOf(h.client.getActiveThreads('9'));
+        expect(error).toMatchObject({ kind: 'unknown', status: 202, code: 110000, retryAfterMs: 8000 });
+        expect(h.sleeps).toEqual([]);
+        expect(h.calls).toHaveLength(2);
+      });
+
+      it('waits for a retry_after that fits exactly into the budget', async () => {
+        const h = setup([json(forum), notIndexed(3), json({ threads: [post('101')] })]);
+        expect((await h.client.getActiveThreads('9')).map((t) => t.id)).toEqual(['101']);
+        expect(h.sleeps).toEqual([3000]);
+      });
+
+      it('waits for the first retry_after but not for a second one that would exceed the budget', async () => {
+        const h = setup([json(forum), notIndexed(2), notIndexed(2), json({ threads: [post('101')] })]);
+        const error = await errorOf(h.client.getActiveThreads('9'));
+        expect(error.status).toBe(202);
+        expect(h.sleeps).toEqual([2000]);
+        expect(h.calls).toHaveLength(3);
+      });
+
+      it('never sleeps more than 3 s in total, whatever the answers say', async () => {
+        for (const retryAfter of [undefined, 0, 0.001, 0.5, 1, 1.5, 2, 3, 10, 120]) {
+          const h = setup([json(twoForums), ...Array.from({ length: 12 }, () => notIndexed(retryAfter))]);
+          await errorOf(h.client.getActiveThreads('9'));
+          expect(h.sleeps.reduce((sum, ms) => sum + ms, 0)).toBeLessThanOrEqual(3000);
+          expect(h.sleeps.length).toBeLessThanOrEqual(2);
+        }
+      });
+
+      it('with the budget gone, a slow-index forum is given up on and a ready one is still read', async () => {
+        const h = setup([json(twoForums), notIndexed(8), json({ threads: [post('103', { parent_id: '13' })], has_more: false })]);
+        const threads = await h.client.getActiveThreads('9');
+        expect(threads.map((t) => t.id)).toEqual(['103']);
+        expect(h.sleeps).toEqual([]);
+        expect(h.urls().slice(1)).toEqual([search('12'), search('13')]);
+      });
     });
 
     it('also recognises the code 110000 on its own, and a 202 without threads', async () => {
@@ -1179,7 +1325,7 @@ describe('LiveDiscordClient: getActiveThreads', () => {
     it('can be cancelled while waiting', async () => {
       const entered = deferred();
       const controller = new AbortController();
-      const h = setup([json(forum), notIndexed(30), json({ threads: [] })], {
+      const h = setup([json(forum), notIndexed(2), json({ threads: [] })], {
         sleep: (_ms, signal) =>
           new Promise<void>((_, reject) => {
             entered.resolve();

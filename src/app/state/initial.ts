@@ -74,6 +74,7 @@ export function initialData(): AppData {
     needsTokenReason: 'no-token',
     tokenDetected: false,
     fatalError: null,
+    fatalDetail: null,
     locale: resolveLocale(DEFAULT_PREFS.locale, readBrowserLanguage()),
     prefs: DEFAULT_PREFS,
   };

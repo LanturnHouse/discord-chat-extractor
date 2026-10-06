@@ -1,5 +1,6 @@
 import { strFromU8, unzipSync } from 'fflate';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { LiveDiscordClient } from '../../../src/lib/discord/api';
 import { DiscordApiError, type DiscordClient, type DiscordErrorKind, type GetMessagesOptions } from '../../../src/lib/discord/client';
 import { snowflakeToTimestamp, timestampToSnowflake } from '../../../src/lib/discord/snowflake';
 import type { Message, Snowflake, User } from '../../../src/lib/discord/types';
@@ -635,10 +636,71 @@ describe('errors', () => {
     expect(out.fileCount).toBe(2);
   });
 
-  it('uses the raw message for unknown API errors', async () => {
-    const client = new FakeClient({}, { errors: { a: { error: new DiscordApiError('unknown', 'HTTP 418 teapot') } } });
-    const out = await harness(client, [target('a')], recordingFormat().format).run();
-    expect(out.failures[0].reason).toBe('HTTP 418 teapot');
+  describe('the reason of a failed channel is built from kind and status, never from the error message', () => {
+    // The message is developer text (English, possibly with Discord's own wording); the reason is what the export dialog lists.
+    const reasonOf = async (error: DiscordApiError, locale: ExportOptions['locale'] = 'en'): Promise<string> => {
+      const h = harness(new FakeClient({}, { errors: { a: { error } } }), [target('a')], recordingFormat().format);
+      const out = await h.run({ options: { ...OPTIONS, locale } });
+      expect(lastOf(h.progress).targets[0].error).toBe(out.failures[0].reason);
+      return out.failures[0].reason;
+    };
+
+    it.each<[string, DiscordErrorKind, number | undefined, string, string]>([
+      ['a 403 that is not a permission error', 'unknown', 403, 'Discord refused the request (403). It may be a temporary block; try again later.', 'Discord가 요청을 거부했습니다 (403). 일시적인 차단일 수 있으니 잠시 후 다시 시도하세요.'],
+      ['a rejected request', 'unknown', 400, 'Discord did not accept the request (HTTP 400).', 'Discord가 요청을 받아들이지 않았습니다 (HTTP 400).'],
+      ['an odd status', 'unknown', 418, 'Discord did not accept the request (HTTP 418).', 'Discord가 요청을 받아들이지 않았습니다 (HTTP 418).'],
+      ['an unknown error without a response', 'unknown', undefined, 'Discord sent an unexpected answer', 'Discord에서 예상하지 못한 응답을 받았어요'],
+      ['a 200 answer whose body could not be used', 'unknown', 200, 'Discord sent an unexpected answer', 'Discord에서 예상하지 못한 응답을 받았어요'],
+      ['a 204 answer', 'unknown', 204, 'Discord sent an unexpected answer', 'Discord에서 예상하지 못한 응답을 받았어요'],
+      ['the highest status that is no refusal', 'unknown', 399, 'Discord sent an unexpected answer', 'Discord에서 예상하지 못한 응답을 받았어요'],
+      ['a server error', 'server', 503, 'Discord server error; try again later.', 'Discord 서버 오류입니다. 잠시 후 다시 시도하세요.'],
+      ['a network error', 'network', undefined, 'Network error while contacting Discord.', 'Discord에 연결하는 중 네트워크 오류가 발생했습니다.'],
+    ])('%s gets a fixed sentence in the language of the export', async (_label, kind, status, en, ko) => {
+      const error = new DiscordApiError(kind, 'Discord API error 123 for GET /channels/777/messages: raw developer text', { status });
+      expect(await reasonOf(error, 'en')).toBe(en);
+      expect(await reasonOf(error, 'ko')).toBe(ko);
+      expect(await reasonOf(error, 'fr' as ExportOptions['locale'])).toBe(en);
+    });
+
+    it('never repeats the message, a path or an English hint in the Korean text', async () => {
+      const error = new DiscordApiError(
+        'unknown',
+        'Discord API error 403 for GET /channels/304/messages (not a missing-permission error; this may be a temporary block, try again later)',
+        { status: 403 },
+      );
+      const reason = await reasonOf(error, 'ko');
+      expect(reason).not.toMatch(/temporary|permission|try again/);
+      expect(reason).not.toContain('/channels');
+      expect(reason).not.toContain('Discord API error');
+    });
+
+    it('lists an error object without a message too', async () => {
+      expect(await reasonOf(new DiscordApiError('unknown', ''), 'en')).toBe('Discord sent an unexpected answer');
+    });
+
+    it('never says Discord did not accept a request that it answered with a 2xx', async () => {
+      for (const locale of ['en', 'ko'] as const) {
+        const reason = await reasonOf(new DiscordApiError('unknown', 'Discord returned an unexpected response (messages).', { status: 200 }), locale);
+        expect(reason).not.toMatch(/HTTP|200|accept|받아들이/);
+      }
+    });
+
+    it.each([
+      ['an invalid JSON body', '{not json', 'application/json'],
+      ['an HTML page', '<html>login</html>', 'text/html'],
+    ])('lists the real client\'s 200 answer with %s as an unexpected answer', async (_label, body, contentType) => {
+      const client = new LiveDiscordClient({
+        getToken: () => 'token',
+        fetch: async () => new Response(body, { status: 200, headers: { 'content-type': contentType } }),
+      });
+      for (const [locale, expected] of [
+        ['en', 'Discord sent an unexpected answer'],
+        ['ko', 'Discord에서 예상하지 못한 응답을 받았어요'],
+      ] as const) {
+        const out = await runExport({ client, targets: [target('1')], format: recordingFormat().format, options: { ...OPTIONS, locale }, now: () => NOW });
+        expect(out.failures).toEqual([{ channelId: '1', label: 'Guild / chan-1', kind: 'error', reason: expected }]);
+      }
+    });
   });
 
   it('treats unexpected (non-API) errors such as a writer crash as a failure of that target only', async () => {
@@ -766,14 +828,14 @@ describe('a long rate limit (the live client refuses every later request)', () =
 
 describe('403 that is not a permission error (kind "unknown")', () => {
   // The live client reports a Cloudflare / anti-abuse block as 'unknown' with status 403 (see api.ts): it says nothing about this
-  // channel's permissions, so the channel is an error with Discord's own wording - never the fixed "no access" text.
+  // channel's permissions, so the channel is an error that says "refused, possibly temporary" - never the fixed "no access" text.
   const blocked = (): DiscordApiError =>
     new DiscordApiError('unknown', 'Discord API error 403 for GET /channels/b/messages (not a missing-permission error; this may be a temporary block, try again later)', {
       status: 403,
       code: 40333,
     });
 
-  it('is listed as an error with its own message, not as "no access", and the run goes on', async () => {
+  it('is listed as an error that names a temporary block, not as "no access", and the run goes on', async () => {
     const client = new FakeClient({ a: messages(1), c: messages(2) }, { errors: { b: { error: blocked() } } });
     const h = harness(client, [target('a'), target('b', { channelName: 'blocked' }), target('c')], recordingFormat().format);
     const out = await h.run();
@@ -781,9 +843,11 @@ describe('403 that is not a permission error (kind "unknown")', () => {
     expect(lastOf(h.progress).targets.map((t) => t.status)).toEqual(['done', 'error', 'done']);
     expect(out.failures).toHaveLength(1);
     expect(out.failures[0]).toMatchObject({ channelId: 'b', label: 'Guild / blocked', kind: 'error' });
-    expect(out.failures[0].reason).toBe(blocked().message);
+    const reason = 'Discord refused the request (403). It may be a temporary block; try again later.';
+    expect(out.failures[0].reason).toBe(reason);
     expect(out.failures[0].reason).not.toContain('No access');
-    expect(lastOf(h.progress).targets[1].error).toBe(blocked().message);
+    expect(out.failures[0].reason).not.toContain('/channels/');
+    expect(lastOf(h.progress).targets[1].error).toBe(reason);
     expect(out.fileCount).toBe(2);
   });
 

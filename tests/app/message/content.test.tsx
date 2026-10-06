@@ -395,6 +395,48 @@ describe('embeds', () => {
     expect(must(link, 'img').getAttribute('width')).toBe('400');
   });
 
+  it('gives the link of a picture-only embed an accessible name: the site it leads to, in the active locale', () => {
+    const bare = (type: string): Partial<Message> => ({
+      embeds: [{ type, url: 'https://example.com/images/cat.png', thumbnail: { url: 'x', proxy_url: `${MEDIA}/external/cat.png`, width: 640, height: 480 } }],
+    });
+    for (const type of ['image', 'gifv']) {
+      const english = renderMsg(bare(type), 'en');
+      const link = must<HTMLAnchorElement>(english.container, '.msg-embed--bare a.msg-embed__media-link');
+      expect(link.getAttribute('aria-label'), type).toBe('Open example.com');
+      expect(must(link, 'img').getAttribute('alt')).toBe('');
+      english.unmount();
+      const korean = renderMsg(bare(type), 'ko');
+      expect(must(korean.container, '.msg-embed--bare a.msg-embed__media-link').getAttribute('aria-label'), type).toBe('example.com 열기');
+      korean.unmount();
+    }
+  });
+
+  it('every link of the embeds has a name: its text, its aria-label or the alt text of its picture', () => {
+    const picture = { url: 'x', proxy_url: `${MEDIA}/external/cat.png`, width: 640, height: 480 };
+    const { container } = renderMsg({
+      embeds: [
+        { type: 'image', url: 'https://example.com/a.png', thumbnail: picture },
+        { type: 'image', url: 'https://example.com/b.png', title: 'A cat', thumbnail: picture },
+        { type: 'rich', url: 'https://example.com:8443/c', description: 'Only a description', image: picture },
+        { type: 'link', url: 'https://example.com/d', provider: { name: 'ExampleSite' }, thumbnail: picture },
+        { type: 'video', url: 'https://example.com/watch', thumbnail: picture, video: { url: 'https://example.com/embed/1', width: 1280, height: 720 } },
+      ],
+    });
+    const links = all<HTMLAnchorElement>(container, '.msg-embeds a[href]');
+    expect(links.length).toBeGreaterThanOrEqual(5);
+    for (const link of links) {
+      const name = (link.getAttribute('aria-label') ?? '').trim() || (link.textContent ?? '').trim() || (link.querySelector('img')?.getAttribute('alt') ?? '').trim();
+      expect(name, link.outerHTML).not.toBe('');
+    }
+    // A picture that already has a name (the title) is not renamed, and the host keeps its port.
+    const pictures = all<HTMLAnchorElement>(container, 'a.msg-embed__media-link');
+    expect(pictures).toHaveLength(4);
+    expect(pictures[1].getAttribute('aria-label')).toBeNull();
+    expect(must(pictures[1], 'img').getAttribute('alt')).toBe('A cat');
+    expect(pictures[2].getAttribute('aria-label')).toBe('Open example.com:8443');
+    expect(pictures[3].getAttribute('aria-label')).toBe('Open video');
+  });
+
   it('renders nothing for an embed that has no usable content', () => {
     const { container } = renderMsg({
       embeds: [{ type: 'image', image: { url: 'https://evil.example/x.png' } }, {}, null as unknown as Embed],

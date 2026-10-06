@@ -36,6 +36,7 @@ const MIN_PROGRESS_INTERVAL_MS = 100;
 
 type Locale = ExportOptions['locale'];
 
+/** Fixed reasons by error kind; the kinds that are not listed ('unknown') are described by UNKNOWN_REASONS. */
 const REASONS: Record<Locale, Partial<Record<DiscordErrorKind, string>>> = {
   en: {
     auth: 'Not signed in to Discord (401).',
@@ -52,6 +53,28 @@ const REASONS: Record<Locale, Partial<Record<DiscordErrorKind, string>>> = {
     'rate-limited': 'Discord 요청 한도에 도달했습니다. 잠시 후 다시 시도하세요.',
     network: 'Discord에 연결하는 중 네트워크 오류가 발생했습니다.',
     server: 'Discord 서버 오류입니다. 잠시 후 다시 시도하세요.',
+  },
+};
+
+/** An answer that cannot be used although Discord did not refuse anything: no response status at all, or a 2xx with a broken body. */
+const UNEXPECTED_ANSWER: Record<Locale, string> = {
+  en: 'Discord sent an unexpected answer',
+  ko: 'Discord에서 예상하지 못한 응답을 받았어요',
+};
+
+/**
+ * `kind: 'unknown'` is whatever Discord answered that has no kind of its own, told apart by the HTTP status when there is one.
+ * A 403 here is not a permission error (those are 'forbidden'): it is a block by Cloudflare or Discord's anti-abuse, usually temporary.
+ * A status below 400 is no refusal, so "did not accept the request" would be untrue for it.
+ */
+const UNKNOWN_REASONS: Record<Locale, (status: number | undefined) => string> = {
+  en: (status) => {
+    if (status === 403) return 'Discord refused the request (403). It may be a temporary block; try again later.';
+    return status === undefined || status < 400 ? UNEXPECTED_ANSWER.en : `Discord did not accept the request (HTTP ${status}).`;
+  },
+  ko: (status) => {
+    if (status === 403) return 'Discord가 요청을 거부했습니다 (403). 일시적인 차단일 수 있으니 잠시 후 다시 시도하세요.';
+    return status === undefined || status < 400 ? UNEXPECTED_ANSWER.ko : `Discord가 요청을 받아들이지 않았습니다 (HTTP ${status}).`;
   },
 };
 
@@ -85,8 +108,12 @@ const ZIP_LIMIT_REASONS: Record<Locale, Record<ZipLimitKind, string>> = {
 /** Total on purpose: an unexpected locale value falls back to English instead of throwing in the middle of a run. */
 const inLocale = <T>(table: Record<Locale, T>, locale: Locale): T => (locale === 'ko' ? table.ko : table.en);
 
+/**
+ * The reason recorded for a failed channel. For Discord errors it is built from `kind` and `status` only, never from the error's
+ * message (developer text, English): the wording stays stable and in the export's language whatever the client says.
+ */
 function describeError(error: unknown, locale: Locale): string {
-  if (error instanceof DiscordApiError) return inLocale(REASONS, locale)[error.kind] ?? error.message;
+  if (error instanceof DiscordApiError) return inLocale(REASONS, locale)[error.kind] ?? inLocale(UNKNOWN_REASONS, locale)(error.status);
   if (error instanceof ZipLimitError) return inLocale(ZIP_LIMIT_REASONS, locale)[error.limit];
   return error instanceof Error ? error.message : String(error);
 }
@@ -244,7 +271,8 @@ export async function runExport(args: RunExportArgs): Promise<ExportOutput> {
 
   // Without an `after` bound the channel's creation time stands in for the start of its history.
   const rangeStartOf = (index: number): number | null => plans[index].scope.afterMs ?? snowflakeTime(targets[index].channelId);
-  const rangeEndOf = (index: number): number => plans[index].scope.beforeMs ?? exportedAt.getTime();
+  // An end date in the future (up to 9999-12-31 can be typed) must not stretch the estimate: nothing exists beyond the present.
+  const rangeEndOf = (index: number): number => Math.min(plans[index].scope.beforeMs ?? exportedAt.getTime(), exportedAt.getTime());
   // A counted export knows how far it is from the count alone; otherwise the time between range start and end is the estimate,
   // and null (unknowable) when that range is empty, inverted or has no usable start.
   const initialRatio = (index: number): number | null => {

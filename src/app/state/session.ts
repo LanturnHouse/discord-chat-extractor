@@ -1,5 +1,7 @@
 import type { Platform } from '@/app/platform/types';
-import { describeError } from '../i18n/common';
+import { technicalDetail } from '../components/common/technicalDetail';
+import { common, describeError } from '../i18n/common';
+import { DiscordApiError } from '@/lib/discord/client';
 import type { Session, StoreContext } from './context';
 import { initialSessionData } from './initial';
 import type { NeedsTokenReason } from './types';
@@ -18,7 +20,7 @@ export function resetData(ctx: StoreContext): void {
 export function enterNeedsToken(ctx: StoreContext, reason: NeedsTokenReason): void {
   ctx.runtime.endSession();
   resetData(ctx);
-  ctx.set({ status: 'needs-token', needsTokenReason: reason, tokenDetected: false, fatalError: null });
+  ctx.set({ status: 'needs-token', needsTokenReason: reason, tokenDetected: false, fatalError: null, fatalDetail: null });
 }
 
 /**
@@ -58,5 +60,10 @@ async function forgetRejectedToken(ctx: StoreContext, platform: Platform, episod
 }
 
 export function failBoot(ctx: StoreContext, error: unknown): void {
-  ctx.set({ status: 'fatal', fatalError: describeError(error, ctx.get().locale), tokenDetected: false });
+  const locale = ctx.get().locale;
+  // API errors map to localized text from kind/status. Any other exception (a bug, a broken platform) must not put its English
+  // message into a possibly Korean sentence: the sentence stays generic and the text goes to a collapsed technical block.
+  const detail = error instanceof DiscordApiError || !(error instanceof Error) ? null : (technicalDetail(`${error.name}: ${error.message}`) ?? null);
+  const message = error instanceof DiscordApiError ? describeError(error, locale) : common[locale].errorUnknown;
+  ctx.set({ status: 'fatal', fatalError: message, fatalDetail: detail, tokenDetected: false });
 }

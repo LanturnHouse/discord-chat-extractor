@@ -3,6 +3,7 @@ import { common, useStrings } from '@/app/i18n';
 import { MAX_EXPORT_LIMIT, type ExportScope } from '@/lib/export/types';
 import { Close } from '../common/Icons';
 import { useNumberFormat } from './hooks';
+import { useAfterPress } from './pressGate';
 import { RadioGroup, type RadioOption } from './RadioGroup';
 import {
   checkFields,
@@ -37,6 +38,7 @@ const MAX_DATE = '9999-12-31';
 function DateField({ label, clearLabel, value, partial, invalid, focusOnOpen, errorId, onChange }: DateFieldProps): ReactElement {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
+  const afterPress = useAfterPress();
   // `onChange` only fires when the value changes; leaving the field is the other moment an unfinished date shows up.
   const report = (input: HTMLInputElement): void => onChange(input.value, input.validity.badInput);
   return (
@@ -57,7 +59,11 @@ function DateField({ label, clearLabel, value, partial, invalid, focusOnOpen, er
           aria-invalid={invalid ? true : undefined}
           aria-describedby={invalid ? errorId : undefined}
           onChange={(event) => report(event.currentTarget)}
-          onBlur={(event) => report(event.currentTarget)}
+          // The error this can bring up must not move the control that the press which took the focus is aimed at: it waits for the click.
+          onBlur={(event) => {
+            const input = event.currentTarget;
+            afterPress(() => report(input));
+          }}
         />
         {value === '' && !partial ? (
           <span className="topbar-range__slot" aria-hidden="true" />
@@ -81,13 +87,33 @@ function DateField({ label, clearLabel, value, partial, invalid, focusOnOpen, er
   );
 }
 
+/**
+ * The message under a field. The popover it sits in scrolls, so it can lie below the fold while the field itself is in view:
+ * it brings itself into view when it appears or changes.
+ */
+function InlineError({ id, message }: { id: string; message: string }): ReactElement {
+  const ref = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    // jsdom has no layout and no such method.
+    if (typeof ref.current?.scrollIntoView === 'function') ref.current.scrollIntoView({ block: 'nearest' });
+  }, [message]);
+  return (
+    <p ref={ref} id={id} role="alert" className="topbar-options__error">
+      {message}
+    </p>
+  );
+}
+
 function limitMessage(problem: LimitProblem, t: (typeof topbarStrings)['en'], fmt: (value: number) => string): string {
   if (problem === 'empty') return t.limitEmpty;
   return problem === 'whole' ? t.limitWhole : t.limitRange(MAX_EXPORT_LIMIT, fmt);
 }
 
 export interface ScopeEditorProps {
-  /** The scope the store holds (always one that can be exported). */
+  /**
+   * The scope the inputs show while `draft` is null: what the store holds (always one that can be exported). For a channel that has
+   * no settings of its own that is the common settings, so the editor follows them until `onScopeChange` gives the channel its own.
+   */
   scope: ExportScope;
   /** The inputs while they hold something that cannot be exported (null = they show `scope`). Lives above this editor so it outlives it. */
   draft: ScopeFields | null;
@@ -103,8 +129,8 @@ export interface ScopeEditorProps {
 }
 
 /**
- * The date range and the message count of ONE scope: the default settings (export options popover) and a channel's own
- * settings (selection list) are edited by this same component. It only ever hands a valid scope to `onScopeChange`; anything
+ * The date range and the message count of ONE scope: the default settings (export options popover) and what a channel is
+ * exported with (selection list) are edited by this same component. It only ever hands a valid scope to `onScopeChange`; anything
  * else (a start after the end, an unfinished date, an empty / decimal / too large count) stays in `draft`, is flagged here,
  * and is what the Download button refuses on, so the inputs and the file that Download produces can never disagree.
  */
@@ -186,11 +212,7 @@ export function ScopeEditor({ scope, draft, onDraftChange, onScopeChange, headin
             onChange={(to, toPartial) => commit({ ...fields, to, toPartial })}
           />
         </div>
-        {rangeProblem === null ? null : (
-          <p id={rangeErrorId} role="alert" className="topbar-options__error">
-            {rangeProblem.kind === 'inverted' ? c.invalidRange : t.invalidDate}
-          </p>
-        )}
+        {rangeProblem === null ? null : <InlineError id={rangeErrorId} message={rangeProblem.kind === 'inverted' ? c.invalidRange : t.invalidDate} />}
         <p className="topbar-options__help">{t.rangeHelp}</p>
       </section>
 
@@ -215,6 +237,14 @@ export function ScopeEditor({ scope, draft, onDraftChange, onScopeChange, headin
                 onChange={(event) =>
                   commit({ ...fields, limitMode: 'limit', limitText: event.currentTarget.value, limitBad: event.currentTarget.validity.badInput })
                 }
+                // Text the input cannot read ('e', '1e') keeps its value at '' while it is typed or deleted, so no change event comes:
+                // this one still tells whether something unreadable is left in the field.
+                onInput={(event) => {
+                  const { value, validity } = event.currentTarget;
+                  if (value === fields.limitText && validity.badInput !== fields.limitBad) commit({ ...fields, limitMode: 'limit', limitBad: validity.badInput });
+                }}
+                // A focused number input steps its value on the mouse wheel: leave it, so scrolling the popover over the field keeps the number.
+                onWheel={(event) => event.currentTarget.blur()}
               />
               <span className="topbar-count__unit" aria-hidden="true">
                 {t.limitUnit}
@@ -234,9 +264,7 @@ export function ScopeEditor({ scope, draft, onDraftChange, onScopeChange, headin
               ))}
             </div>
             {limitProblem !== null ? (
-              <p id={limitErrorId} role="alert" className="topbar-options__error">
-                {limitMessage(limitProblem, t, fmt)}
-              </p>
+              <InlineError id={limitErrorId} message={limitMessage(limitProblem, t, fmt)} />
             ) : limitNumber === null ? null : (
               <p id={limitHelpId} className="topbar-options__help">
                 {describeLimit(fields.from !== '' && !fields.fromPartial, fields.to !== '' && !fields.toPartial, limitNumber, t, fmt)}

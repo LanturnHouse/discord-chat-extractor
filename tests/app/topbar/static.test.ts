@@ -106,7 +106,6 @@ describe('topbar strings', () => {
       'countPerChannel',
       'limitEmpty',
       'limitWhole',
-      'useCommonSettings',
       'resetToCommon',
       'settingsNeedAttention',
       'channelSettingsHint',
@@ -119,9 +118,8 @@ describe('topbar strings', () => {
     expect(ko.countLabel).toBe('메시지 개수');
     expect([en.countAll, en.countLimit]).toEqual(['All', 'Limit to N']);
     expect([ko.countAll, ko.countLimit]).toEqual(['전체', '개수 지정']);
-    expect(en.useCommonSettings).toBe('Use common settings');
-    expect(ko.useCommonSettings).toBe('공통 설정 사용');
     expect(en.resetToCommon).toBe('Reset to common settings');
+    expect(ko.resetToCommon).toBe('공통 설정으로 되돌리기');
     expect(en.channelSettings('general')).toBe('Export settings for general');
     expect(ko.channelSettings('general')).toBe('general 내보내기 설정');
   });
@@ -129,7 +127,6 @@ describe('topbar strings', () => {
   it('the scope functions put their arguments into the text', () => {
     for (const strings of [ko, en]) {
       expect(strings.channelSettings('general')).toContain('general');
-      expect(strings.commonSettingsNow('X-summary')).toContain('X-summary');
       expect(strings.ownSettingsCount(2, fmt)).toContain('2');
       expect(strings.ownSettingsNote(3, fmt)).toContain('3');
       expect(strings.limitRange(100000, fmt)).toContain('100000');
@@ -142,6 +139,16 @@ describe('topbar strings', () => {
       expect(strings.scopeBetween('2026-01-01', '2026-02-02')).toMatch(/2026-01-01.*2026-02-02/);
       expect(strings.scopeBetweenLimit('2026-01-01', '2026-02-02', 42, fmt)).toMatch(/2026-01-01.*2026-02-02.*42/);
     }
+  });
+
+  it('the "use common settings" checkbox and its caption are gone from both languages (the panel opens straight on the editor)', () => {
+    for (const strings of [ko, en]) {
+      expect(Object.keys(strings)).not.toContain('useCommonSettings');
+      expect(Object.keys(strings)).not.toContain('commonSettingsNow');
+    }
+    const panel = sources.get('ChannelScopePanel.tsx') ?? '';
+    expect(panel).not.toMatch(/checkbox|useCommon|commonSettingsNow|topbar-scope__toggle/);
+    expect(css).not.toMatch(/topbar-scope__toggle/);
   });
 
   it('English plurals', () => {
@@ -157,6 +164,16 @@ describe('topbar strings', () => {
     expect(en.cancelledSummary(1, fmt)).toBe('1 channel was finished before you cancelled.');
     expect(en.cancelledSummary(3, fmt)).toBe('3 channels were finished before you cancelled.');
     expect(en.summaryDone(1, 1, 'x.txt', fmt)).toBe('1 channel, 1 message saved as x.txt');
+    // QA-EXP-06: the note about unsaved channels agrees with the count.
+    expect(en.unsavedNote(1)).toBe('It has not been saved yet. Closing without saving discards it.');
+    expect(en.unsavedNote(2)).toBe('They have not been saved yet. Closing without saving discards them.');
+    expect(ko.unsavedNote(1)).toBe(ko.unsavedNote(5));
+  });
+
+  it('the title of a run that exported nothing says so, in both languages (QA-EXP-07)', () => {
+    expect(en.titleNothing).toBe('Nothing was exported');
+    expect(ko.titleNothing).toBe('내보낸 채널이 없어요');
+    for (const strings of [ko, en]) expect(strings.titleNothing).not.toBe(strings.titleDone);
   });
 });
 
@@ -170,9 +187,10 @@ describe('topbar.css', () => {
 
   it('hard-codes no hex colour and no colour that exists as a token', () => {
     expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
-    // The only literals are the overlay tints of the spec: the 70% black backdrop and the white tints on the brand button.
+    // The only literals are the overlay tints of the spec: the 70% black backdrop, the black tint behind the format tag and the
+    // white divider on the brand button.
     const literals = [...css.matchAll(/rgba?\([^)]*\)/g)].map((match) => match[0].replace(/\s+/g, ''));
-    expect([...new Set(literals)].sort()).toEqual(['rgba(0,0,0,0.7)', 'rgba(255,255,255,0.2)', 'rgba(255,255,255,0.25)']);
+    expect([...new Set(literals)].sort()).toEqual(['rgba(0,0,0,0.2)', 'rgba(0,0,0,0.7)', 'rgba(255,255,255,0.25)']);
   });
 
   it('every class the components use is styled', () => {
@@ -422,5 +440,157 @@ describe('topbar sources', () => {
     const imgTags = [...sources.values()].flatMap((source) => [...source.matchAll(/<img\b/g)]);
     expect(imgTags).toHaveLength(0);
     expect(sources.get('ChannelTitle.tsx')).toMatch(/<SafeImg[^>]*src=\{dm\.iconUrl\}[^>]*fallback=\{fallback\}/);
+  });
+});
+
+describe('contrast (WCAG 2.1 AA, 4.5:1 for text under 18px)', () => {
+  type Rgb = [number, number, number];
+  type Rgba = [number, number, number, number];
+
+  const tokens = new Map([...theme.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/gi)].map((match) => [match[1], match[2].trim()] as const));
+  const commonCss = stripComments(read(join(root, 'src/app/components/common/common.css')));
+
+  /** The declarations of every rule whose selector list contains exactly `selector`; later rules win, as in the cascade for equal specificity. */
+  function declarationsOf(source: string, selector: string): Map<string, string> {
+    const merged = new Map<string, string>();
+    for (const block of source.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (!block[1].split(',').some((candidate) => candidate.trim().replace(/\s+/g, ' ') === selector)) continue;
+      for (const declaration of block[2].matchAll(/([a-z-]+)\s*:\s*([^;]+);?/g)) merged.set(declaration[1], declaration[2].trim());
+    }
+    return merged;
+  }
+
+  function color(value: string): Rgba {
+    const text = value.trim();
+    const variable = /^var\((--[a-z0-9-]+)\)$/.exec(text);
+    if (variable !== null) return color(tokens.get(variable[1]) ?? '');
+    if (text === 'white') return [255, 255, 255, 1];
+    if (text === 'black') return [0, 0, 0, 1];
+    const hex = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(text);
+    if (hex !== null) return [parseInt(hex[1], 16), parseInt(hex[2], 16), parseInt(hex[3], 16), 1];
+    const rgba = /^rgba?\(([^)]+)\)$/.exec(text);
+    if (rgba !== null) {
+      const [r, g, b, a = '1'] = rgba[1].split(',').map((part) => part.trim());
+      return [Number(r), Number(g), Number(b), Number(a)];
+    }
+    const mix = /^color-mix\(in srgb,\s*(.+?)\s+(\d+)%,\s*(\w+)\)$/.exec(text);
+    if (mix !== null) {
+      const [first, second, share] = [color(mix[1]), color(mix[3]), Number(mix[2]) / 100];
+      return [first[0] * share + second[0] * (1 - share), first[1] * share + second[1] * (1 - share), first[2] * share + second[2] * (1 - share), 1];
+    }
+    throw new Error(`cannot read the colour "${value}"`);
+  }
+
+  const over = (top: Rgba, below: Rgb): Rgb => [0, 1, 2].map((i) => top[i] * top[3] + below[i] * (1 - top[3])) as Rgb;
+  const luminance = ([r, g, b]: Rgb): number => {
+    const channel = (value: number): number => (value / 255 <= 0.03928 ? value / 255 / 12.92 : ((value / 255 + 0.055) / 1.055) ** 2.4);
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+  };
+  const ratio = (a: Rgb, b: Rgb): number => {
+    const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (light + 0.05) / (dark + 0.05);
+  };
+  const rgb = (value: string, below: Rgb = [0, 0, 0]): Rgb => over(color(value), below);
+
+  /** The declared value of `property` on the first selector that sets it: the more specific selectors first, the plain one last. */
+  function effective(property: string, ...selectors: string[]): string {
+    for (const selector of selectors) {
+      const value = declarationsOf(css, selector).get(property) ?? declarationsOf(commonCss, selector).get(property);
+      if (value !== undefined) return value;
+    }
+    throw new Error(`no ${property} on ${selectors.join(' / ')}`);
+  }
+
+  it('the ratio maths is right (white on the shared red is the 3.77:1 of the QA report, white on the brand blue 4.61:1)', () => {
+    expect(ratio([255, 255, 255], rgb('var(--danger)'))).toBeCloseTo(3.77, 2);
+    expect(ratio([255, 255, 255], rgb('var(--brand)'))).toBeCloseTo(4.61, 2);
+  });
+
+  it('the red Cancel button of the dialog: white text on its fill, at rest and on hover (QA-LAYOUT-04)', () => {
+    const text = rgb(effective('color', '.dce-button'));
+    const rest = rgb(effective('background', '.topbar-dialog__footer .dce-button--danger', '.dce-button--danger'));
+    const hover = rgb(effective('background', '.topbar-dialog__footer .dce-button--danger:hover:not(:disabled)', '.dce-button--danger:hover:not(:disabled)'));
+    expect(ratio(text, rest)).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(text, hover)).toBeGreaterThanOrEqual(4.5);
+    // Hovering still changes something.
+    expect(hover).not.toEqual(rest);
+  });
+
+  describe('format cards (QA-LAYOUT-05)', () => {
+    const popover = rgb(effective('background', '.topbar-popover'));
+    const hoverTint = effective('background', '.topbar-radio--cards .topbar-radio__option:hover');
+    const selectedTint = effective('background', ".topbar-radio--cards .topbar-radio__option[aria-checked='true']");
+    const description = (state: string): string =>
+      effective('color', `.topbar-radio--cards .topbar-radio__option${state} .topbar-radio__description`, '.topbar-radio__description');
+
+    it.each([
+      ['at rest', '', null],
+      ['on hover', ':hover', hoverTint],
+      ['when selected', "[aria-checked='true']", selectedTint],
+    ])('the description is readable %s', (_state, selector, tint) => {
+      const background = tint === null ? popover : rgb(tint, popover);
+      expect(ratio(rgb(description(selector)), background)).toBeGreaterThanOrEqual(4.5);
+    });
+  });
+
+  it('the selected segment of a segmented choice: its label is white on the brand blue (QA-LAYOUT-05)', () => {
+    const selected = ".topbar-radio--segmented .topbar-radio__option[aria-checked='true']";
+    const background = rgb(effective('background', selected));
+    const label = rgb(effective('color', `${selected} .topbar-radio__label`, '.topbar-radio__label'));
+    expect(ratio(label, background)).toBeGreaterThanOrEqual(4.5);
+    // The unselected ones were never a problem: they sit on the dark track.
+    const track = rgb(effective('background', '.topbar-radio--segmented'));
+    expect(ratio(rgb(effective('color', '.topbar-radio__label')), track)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('the format tag inside the Download button: white on its tint over the fill, at rest, on hover and pressed (V-LAYOUT-03)', () => {
+    const tag = effective('background', '.topbar__format-chip');
+    const text = rgb(effective('color', '.topbar__format-chip', '.topbar__split'));
+    const fills = {
+      'at rest': effective('background', '.topbar__split-main'),
+      'on hover': effective('background', '.topbar__split:not([data-unavailable]) .topbar__split-main:hover'),
+      pressed: effective('background', '.topbar__split:not([data-unavailable]) .topbar__split-main:active'),
+    };
+    for (const [state, fill] of Object.entries(fills)) {
+      expect(ratio(text, rgb(tag, rgb(fill))), state).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  describe('hover states of the text buttons of the popovers (V-LAYOUT-04)', () => {
+    /** What the button sits on while hovered: its surface, with the hover tint over it when the hover rule paints one. */
+    function hovered(selector: string, surface: string): { text: Rgb; background: Rgb } {
+      const base = rgb(surface);
+      const tint = declarationsOf(css, `${selector}:hover`).get('background');
+      return { text: rgb(effective('color', `${selector}:hover`, selector)), background: tint === undefined ? base : rgb(tint, base) };
+    }
+
+    it.each([
+      ['Reset to common settings', '.topbar-scope__reset', '.topbar-scope'],
+      ['Clear all', '.topbar-sel__clear', '.topbar-popover'],
+    ])('%s is at least 4.5:1 at rest and on hover, and hovering still shows something', (_name, selector, surface) => {
+      const surfaceColour = effective('background', surface);
+      const rest = { text: rgb(effective('color', selector)), background: rgb(surfaceColour) };
+      const hover = hovered(selector, surfaceColour);
+      expect(ratio(rest.text, rest.background)).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(hover.text, hover.background)).toBeGreaterThanOrEqual(4.5);
+      expect(declarationsOf(css, `${selector}:hover`).get('text-decoration')).toBe('underline');
+    });
+  });
+
+  it('the state word of a channel that failed is the lighter red, on the list surface (V-LAYOUT-05)', () => {
+    const row = ".topbar-targets__row[data-status='error']";
+    const word = rgb(effective('color', `${row} .topbar-targets__state`, '.topbar-targets__state'));
+    const surface = rgb(effective('background', '.topbar-targets'));
+    expect(ratio(word, surface)).toBeGreaterThanOrEqual(4.5);
+    // The icon next to it is not text: it keeps the saturated --danger of the other error markers.
+    expect(effective('color', `${row} .topbar-targets__icon`)).toBe('var(--danger)');
+  });
+
+  it('the parent of a thread keeps its width when the thread name is long (QA-LAYOUT-08)', () => {
+    const parent = declarationsOf(css, '.topbar__name--parent');
+    expect(parent.get('flex-shrink')).toBe('0');
+    expect(parent.get('max-width')).toBe('40%');
+    // The name itself is what gives way, down to the ellipsis.
+    expect(declarationsOf(css, '.topbar__name').get('min-width')).toBe('0');
   });
 });

@@ -80,6 +80,7 @@
   padding: 6px 8px 6px 16px;
   border-radius: var(--radius-md);
   white-space: normal;
+  word-break: keep-all;
 }
 
 .chat-pill__text {
@@ -146,6 +147,7 @@
   font-weight: 700;
   line-height: 40px;
   overflow-wrap: anywhere;
+  word-break: keep-all;
 }
 
 .chat-start__text {
@@ -154,9 +156,14 @@
   font-size: 16px;
   line-height: 20px;
   overflow-wrap: anywhere;
+  word-break: keep-all;
 }
 
-/* --- centred states: nothing open, no access, failed, forum ------------------------------------------------------ */
+/*
+ * --- centred states: nothing open, no access, failed, forum -------------------------------------------------------------
+ * Korean wraps between words, never inside them (`keep-all`); a name or URL without spaces still breaks as a last resort.
+ * The same pair is set on every block of the interface's own sentences (here, the sidebar, the fatal panel, the dialogs).
+ */
 
 .chat-state {
   flex: 1 1 auto;
@@ -184,6 +191,7 @@
   font-weight: 600;
   line-height: 24px;
   overflow-wrap: anywhere;
+  word-break: keep-all;
 }
 
 .chat-state__text {
@@ -193,6 +201,7 @@
   font-size: 16px;
   line-height: 22px;
   overflow-wrap: anywhere;
+  word-break: keep-all;
 }
 
 /* --- skeleton rows while the first page loads -------------------------------------------------------------------- */

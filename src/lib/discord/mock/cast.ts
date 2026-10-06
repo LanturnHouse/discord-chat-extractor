@@ -15,7 +15,7 @@ interface PersonSpec {
 }
 
 const SPECS: readonly PersonSpec[] = [
-  { key: 'me', username: 'demo_user', name: '데모 사용자', avatar: true },
+  { key: 'me', username: 'Demo', name: 'Demo', avatar: true }, // language-neutral: shown as "Connected as ..." in both UI languages
   // Korean names
   { key: 'minjun', username: 'minjun_kim', name: '김민준', avatar: true },
   { key: 'seoyeon', username: 'seoyeon.lee', name: '이서연', avatar: true },

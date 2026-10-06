@@ -6,7 +6,7 @@ import type { ExportFailure, TargetProgress } from '@/lib/export/types';
 import { Button } from '../common/Button';
 import { Check, Lock, Minus, Warning } from '../common/Icons';
 import { Spinner } from '../common/Spinner';
-import { focusInitial, useEscapeKey, useTabTrap } from './focus';
+import { focusInitial, ignoreKeyRepeat, useEscapeKey, useTabTrap } from './focus';
 import { formatElapsed, type NumberFormatter } from './format';
 import { useElapsedMs, useNumberFormat, usePercentFormat } from './hooks';
 import { isActiveStatus, isFinishedStatus, overallRatio, processedCount } from './progress';
@@ -166,11 +166,14 @@ function FailureList({ heading, failures }: { heading: string; failures: readonl
   );
 }
 
-/** `unsaved`: completed channels still wait for "Save" (a cancelled run, or a download that failed). */
-function titleFor(status: ExportJob['status'], unsaved: boolean, t: Strings): string {
+/**
+ * `unsaved`: completed channels still wait for "Save" (a cancelled run, or a download that failed).
+ * `nothing`: the run is over and not one channel made it into a file (no access everywhere, or every channel failed).
+ */
+function titleFor(status: ExportJob['status'], unsaved: boolean, nothing: boolean, t: Strings): string {
   switch (status) {
     case 'done':
-      return t.titleDone;
+      return nothing ? t.titleNothing : t.titleDone;
     case 'cancelled':
       return t.titleCancelled;
     case 'error':
@@ -205,7 +208,7 @@ function FinishedBody({ job, unsavedFiles }: { job: ExportJob; unsavedFiles: num
       ) : (
         <div className="topbar-summary" data-tone="neutral">
           <span>{output.saved ? t.cancelledSaved(output.fileCount, output.filename, fmt) : t.cancelledSummary(output.fileCount, fmt)}</span>
-          {output.saved ? null : <span className="topbar-summary__sub">{t.unsavedNote}</span>}
+          {output.saved ? null : <span className="topbar-summary__sub">{t.unsavedNote(output.fileCount)}</span>}
         </div>
       );
   } else if (job.status === 'error' && unsavedFiles > 0) {
@@ -213,7 +216,7 @@ function FinishedBody({ job, unsavedFiles }: { job: ExportJob; unsavedFiles: num
     summary = (
       <div className="topbar-summary" data-tone="neutral">
         <span>{t.exportedSummary(unsavedFiles, fmt)}</span>
-        <span className="topbar-summary__sub">{t.unsavedNote}</span>
+        <span className="topbar-summary__sub">{t.unsavedNote(unsavedFiles)}</span>
       </div>
     );
   }
@@ -280,10 +283,17 @@ export function ExportProgressDialog({ onHide, returnFocusRef }: ExportProgressD
   useEscapeKey(dismissExportJob, finished);
   useTabTrap(panelRef);
 
-  // The buttons change with the state (running -> done...): when the one that had the focus disappears, move it to the new primary one.
+  // The dialog opens on its first button. The buttons then change with the state (running -> done...): when the one that had the
+  // focus disappears, the focus goes to the dialog itself and never to the next button. A key that is still held down (or pressed
+  // once more) after "Cancel" must not land on "Save", then "Close", then the Download button that gets the focus back.
+  const opened = useRef(false);
   useEffect(() => {
     const panel = panelRef.current;
-    if (panel !== null && !panel.contains(document.activeElement)) focusInitial(panel);
+    const first = !opened.current;
+    opened.current = true;
+    if (panel === null || panel.contains(document.activeElement)) return;
+    if (first) focusInitial(panel);
+    else panel.focus();
   }, [job.status, unsaved]);
 
   useEffect(
@@ -300,17 +310,20 @@ export function ExportProgressDialog({ onHide, returnFocusRef }: ExportProgressD
       <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-busy={active} tabIndex={-1} className="topbar-dialog">
         <header className="topbar-dialog__header">
           <h2 id={titleId} className="topbar-dialog__title">
-            {titleFor(job.status, unsaved, t)}
+            {titleFor(job.status, unsaved, job.output !== null && job.output.fileCount === 0, t)}
           </h2>
         </header>
         <div className="topbar-dialog__body">{active ? <RunningBody job={job} /> : <FinishedBody job={job} unsavedFiles={unsavedFiles} />}</div>
-        <footer className="topbar-dialog__footer">
+        {/* Keyed: the buttons of a running job and those of a finished one are different buttons. Without keys React would turn the
+            focused "Cancel" into "Save" in place, and the focus (and a key still held down) would stay on it. */}
+        <footer className="topbar-dialog__footer" onKeyDown={ignoreKeyRepeat}>
           {active ? (
             <>
-              <Button variant="secondary" onClick={onHide} data-autofocus="">
+              <Button key="hide" variant="secondary" onClick={onHide} data-autofocus="">
                 {t.hide}
               </Button>
               <Button
+                key="cancel"
                 variant="danger"
                 aria-disabled={cancelling || packaging ? true : undefined}
                 data-blocked={packaging ? '' : undefined}
@@ -326,11 +339,11 @@ export function ExportProgressDialog({ onHide, returnFocusRef }: ExportProgressD
             </>
           ) : (
             <>
-              <Button variant={unsaved ? 'secondary' : 'primary'} onClick={dismissExportJob} data-autofocus={unsaved ? undefined : ''}>
+              <Button key="close" variant={unsaved ? 'secondary' : 'primary'} onClick={dismissExportJob} data-autofocus={unsaved ? undefined : ''}>
                 {c.close}
               </Button>
               {unsaved ? (
-                <Button onClick={saveExportOutput} data-autofocus="">
+                <Button key="save" onClick={saveExportOutput} data-autofocus="">
                   {t.saveCompleted(unsavedFiles, fmt)}
                 </Button>
               ) : null}

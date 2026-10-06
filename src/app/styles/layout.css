@@ -12,9 +12,12 @@
  * The sidebar is 240px in the DM view as well. Below --min-app-width the page scrolls horizontally.
  */
 
+/*
+ * `height: 100%` (html and body have it too), not `100vh`: below --min-app-width the page gets a horizontal scrollbar, which takes
+ * its height from the viewport, and a root that is still a full `100vh` tall would then scroll vertically by that much.
+ */
 #root {
-  height: 100vh;
-  height: 100dvh;
+  height: 100%;
   min-width: var(--min-app-width);
 }
 
@@ -107,14 +110,20 @@
   text-decoration: none;
 }
 
-/* Full-screen centred content: boot spinner, fatal error, onboarding. */
+/*
+ * Full-screen centred content: boot spinner, fatal error, onboarding. The child is centred with `margin: auto` and not with
+ * `align-items` / `justify-content: center`: a centred item taller than the container overflows equally at both ends and the
+ * start edge (the logo, the title) can never be scrolled to, whereas auto margins shrink to 0 and keep the top reachable.
+ */
 .app-center {
   display: flex;
-  align-items: center;
-  justify-content: center;
   height: 100%;
   padding: 24px;
   overflow: auto;
+}
+
+.app-center > * {
+  margin: auto;
 }
 
 .app-fatal {
@@ -139,9 +148,38 @@
   color: var(--text-header);
   font-size: 20px;
   font-weight: 600;
+  word-break: keep-all;
 }
 
 .app-fatal__message {
   color: var(--text-normal);
   overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+/* The exception's own text, kept apart from the sentence: collapsed, in the code font, selectable for a bug report. */
+.app-fatal__details {
+  align-self: stretch;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: left;
+}
+
+.app-fatal__details summary {
+  width: fit-content;
+  cursor: pointer;
+}
+
+.app-fatal__detail {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-normal);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  user-select: text;
 }

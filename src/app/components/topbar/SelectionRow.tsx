@@ -24,7 +24,8 @@ interface SelectionRowProps {
 
 /**
  * One selected chat: its kind icon and name, the gear (own export settings) and the x (remove). A chat with settings of its
- * own says them under its name and has a lit gear; one whose settings cannot be exported yet says so, in red.
+ * own says them under its name and has a lit gear; one that follows the common settings (it has none of its own) says nothing.
+ * A chat whose settings cannot be exported yet says so, in red - with or without settings of its own.
  */
 export function SelectionRow({ target, open, onToggle, registerGear, onRemove }: SelectionRowProps): ReactElement {
   const t = useStrings(topbarStrings);

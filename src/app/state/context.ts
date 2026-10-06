@@ -116,3 +116,8 @@ export function isAuthError(error: unknown): boolean {
 export function isForbiddenError(error: unknown): boolean {
   return error instanceof DiscordApiError && error.kind === 'forbidden';
 }
+
+/** Discord's thread search has not indexed the server yet (status 202 / code 110000): an empty thread list is not its answer yet. */
+export function isIndexNotReadyError(error: unknown): boolean {
+  return error instanceof DiscordApiError && error.kind === 'unknown' && (error.status === 202 || error.code === 110000);
+}

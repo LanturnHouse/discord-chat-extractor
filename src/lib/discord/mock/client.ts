@@ -28,9 +28,14 @@ function normaliseLimit(limit: number | undefined): number {
   return Math.min(MAX_PAGE_SIZE, Math.max(1, Math.floor(limit)));
 }
 
+/** Like the real API, ids that do not fit an unsigned 64-bit integer are refused (about the year 2154 as a date cursor). */
+const MAX_UINT64 = (1n << 64n) - 1n;
+
 function parseCursor(value: Snowflake | undefined, name: string): Snowflake | undefined {
   if (value === undefined) return undefined;
-  if (!/^\d{1,20}$/.test(value)) throw new DiscordApiError('unknown', `Invalid "${name}" snowflake`, { status: 400 });
+  if (!/^\d{1,20}$/.test(value) || BigInt(value) > MAX_UINT64) {
+    throw new DiscordApiError('unknown', `Invalid "${name}" snowflake`, { status: 400 });
+  }
   return BigInt(value).toString(); // strips leading zeros so string comparison is numeric
 }
 

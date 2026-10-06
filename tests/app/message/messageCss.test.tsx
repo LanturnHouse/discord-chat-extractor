@@ -63,6 +63,13 @@ function rule(selector: string): Map<string, string> {
   return found.declarations;
 }
 
+/** Specificity as one number: classes, attributes and pseudo-classes count 100 each, element names 1 (enough to compare two rules). */
+function specificity(selector: string): number {
+  const classes = (selector.match(/\.[\w-]+|\[[^\]]*\]|(?<!:):[\w-]+/g) ?? []).length;
+  const types = (selector.replace(/\.[\w-]+|\[[^\]]*\]|::?[\w-]+(\([^)]*\))?/g, ' ').match(/[a-z][\w-]*/gi) ?? []).length;
+  return classes * 100 + types;
+}
+
 describe('message.css', () => {
   it('scopes every selector under a .msg class so it can be embedded in an export', () => {
     expect(rules.length).toBeGreaterThan(100);
@@ -136,6 +143,23 @@ describe('message.css', () => {
 
     expect(rule('.msg-day-divider').get('border-top')).toBe('1px solid var(--divider, #3f4147)');
     expect(rule('.msg-day-divider__label').get('background')).toBe('var(--bg-primary, #313338)');
+  });
+
+  it('keeps the keyboard focus ring visible where a frame clips it', () => {
+    const ring = 2 + 2; // width + offset of `.msg a:focus-visible`
+    const generic = '.msg a:focus-visible, .msg button:focus-visible, .msg video:focus-visible, .msg audio:focus-visible';
+    expect(rule(generic).get('outline-offset')).toBe('2px');
+
+    // The row clips its paint at its own edge (content-visibility): without the margin a link or picture at its very top or
+    // bottom (a bare image embed is the last thing in its row) loses that edge of the ring.
+    expect(parseFloat(rule('.msg').get('overflow-clip-margin') ?? '0')).toBeGreaterThanOrEqual(ring);
+
+    // The picture and video frames clip with overflow: hidden (which also keeps the blur of a hidden spoiler inside), so the
+    // ring of what sits in a frame is drawn inside it.
+    expect(rule('.msg-attachment--image, .msg-attachment--video').get('overflow')).toBe('hidden');
+    const selectors = ['.msg .msg-image-link:focus-visible', '.msg .msg-image:focus-visible', '.msg .msg-video:focus-visible', '.msg .msg-spoiler-cover:focus-visible'];
+    expect(rule(selectors.join(', ')).get('outline-offset')).toBe('-2px');
+    for (const selector of selectors) expect(specificity(selector), selector).toBeGreaterThan(specificity('.msg button:focus-visible'));
   });
 
   it('respects reduced motion', () => {

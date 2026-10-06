@@ -1,7 +1,7 @@
 import { dateTimeAttr, headerTimestamp } from '@/app/components/message/format';
 import { MSG_ICON_PATHS, type MsgIconName } from '@/app/components/message/iconPaths';
 import { getMessageLabels, type MessageLabels } from '@/app/components/message/labels';
-import { EXTERNAL_LINK } from '@/app/components/message/links';
+import { EXTERNAL_LINK, linkHost } from '@/app/components/message/links';
 import { objectsOf } from '@/app/components/message/list';
 import { fitBox, MEDIA_MAX_HEIGHT, MEDIA_MAX_WIDTH, type Size } from '@/app/components/message/media';
 import { avatarUrl } from '../../discord/cdn';
@@ -321,7 +321,12 @@ function embedPictureHtml(picture: EmbedPicture, env: HtmlEnv): string {
   const image = `<img class="msg-embed__image" src="${e(media.url)}" alt="${e(picture.alt)}"${sizeAttrs(box)} loading="lazy" decoding="async">`;
   let inner = image;
   if (href !== null) {
-    const label = picture.play ? attr('aria-label', env.labels.openVideo) : '';
+    // Mirrors EmbedView: an image-only link without alt text still needs an accessible name.
+    const label = picture.play
+      ? attr('aria-label', env.labels.openVideo)
+      : picture.alt === ''
+        ? attr('aria-label', env.labels.openLink(linkHost(href)))
+        : '';
     const play = picture.play ? `<span class="msg-embed__play" aria-hidden="true">${iconSvg('play', 24)}</span>` : '';
     inner = `<a class="msg-embed__media-link" href="${e(href)}"${label}${EXTERNAL}>${image}${play}</a>`;
   }

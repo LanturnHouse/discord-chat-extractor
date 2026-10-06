@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, createEvent, fireEvent, render, screen, within } from '@testing-library/react';
 import { StrictMode, type ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MessageList } from '@/app/components/chat/MessageList';
 import { appStore, type ActiveChannel, type ChannelMessages } from '@/app/state';
 import type { Message } from '@/lib/discord/types';
 import { defaultHeightOf, installFakeLayout, installFakeResizeObserver, type FakeLayout, type InstalledResizeObserver } from './fakeLayout';
-import { dmChannel, messageRange, textChannel } from './fixtures';
+import { dmChannel, messageAt, messageRange, textChannel } from './fixtures';
 
 vi.mock('@/lib/export/formats', () => ({ loadExportFormat: vi.fn() }));
 
@@ -125,18 +125,25 @@ describe('first paint', () => {
   });
 });
 
-describe('staying at the bottom while the content settles', () => {
-  /** Heights of the last message can change: images and fonts arriving late. */
-  function growable() {
-    const state = { lastHeight: 50 };
-    layout.restore();
-    layout = installFakeLayout({
-      viewportHeight: 600,
-      heightOf: (element) => (element.dataset.messageId === '5000399' ? state.lastHeight : defaultHeightOf(element)),
-    });
-    return state;
-  }
+/** Heights of the last message can change: images and fonts arriving late. */
+function growable() {
+  const state = { lastHeight: 50 };
+  layout.restore();
+  layout = installFakeLayout({
+    viewportHeight: 600,
+    heightOf: (element) => (element.dataset.messageId === '5000399' ? state.lastHeight : defaultHeightOf(element)),
+  });
+  return state;
+}
 
+/** A finger at height `y` of the list. */
+function touch(name: 'touchStart' | 'touchMove', element: HTMLElement, y: number): void {
+  const event = createEvent[name](element);
+  Object.defineProperty(event, 'touches', { value: [{ clientY: y }] });
+  fireEvent(element, event);
+}
+
+describe('staying at the bottom while the content settles', () => {
   it('re-pins to the bottom when the content grows, until the user scrolls', () => {
     const state = growable();
     const { scroller } = mount(loaded(newest()));
@@ -149,7 +156,7 @@ describe('staying at the bottom while the content settles', () => {
     fireEvent.wheel(scroller, { deltaY: -100 });
     state.lastHeight = 650;
     resize.fire();
-    expect(scroller.scrollTop).toBe(BOTTOM_OF_200 + 300); // never again for this channel instance
+    expect(scroller.scrollTop).toBe(BOTTOM_OF_200 + 300); // not while the user is moving up
   });
 
   it('its own pin does not count as the user scrolling (scroll events after programmatic pins are ignored)', () => {
@@ -163,6 +170,32 @@ describe('staying at the bottom while the content settles', () => {
     state.lastHeight = 450;
     resize.fire();
     expect(scroller.scrollTop).toBe(BOTTOM_OF_200 + 400);
+  });
+
+  it('a reflow (narrower window) does not end the pin: the scroll anchoring it causes is not the user scrolling away', () => {
+    const wrap = { rowHeight: 50 };
+    layout.restore();
+    layout = installFakeLayout({
+      viewportHeight: 600,
+      nativeAnchoring: true,
+      heightOf: (element) => (element.hasAttribute('data-message-id') ? wrap.rowHeight : defaultHeightOf(element)),
+    });
+    const { scroller } = mount(loaded(newest()));
+    expect(scroller.scrollTop).toBe(BOTTOM_OF_200);
+
+    // Every message wraps onto another line. Chrome moves scrollTop to keep its anchor row still and fires a scroll event
+    // BEFORE the size notification arrives; the list is nowhere near the bottom at that moment.
+    wrap.rowHeight = 60;
+    act(() => {
+      scroller.dispatchEvent(new Event('scroll'));
+    });
+    expect(layout.scrollHeight(scroller) - layout.viewportHeight - scroller.scrollTop).toBeGreaterThan(100);
+    resize.fire();
+    expect(scroller.scrollTop).toBe(layout.scrollHeight(scroller) - layout.viewportHeight);
+
+    wrap.rowHeight = 70;
+    resize.fire();
+    expect(scroller.scrollTop).toBe(layout.scrollHeight(scroller) - layout.viewportHeight);
   });
 
   it('stops pinning once the user moved away from the bottom (scrollbar drag, keyboard, find...)', () => {
@@ -184,11 +217,18 @@ describe('staying at the bottom while the content settles', () => {
   });
 
   it.each([
-    ['wheel', (element: HTMLElement) => fireEvent.wheel(element, { deltaY: 40 })],
-    ['touch drag', (element: HTMLElement) => fireEvent.touchMove(element)],
+    ['a wheel up', (element: HTMLElement) => fireEvent.wheel(element, { deltaY: -40 })],
+    [
+      'a touch drag down',
+      (element: HTMLElement) => {
+        touch('touchStart', element, 100);
+        touch('touchMove', element, 140);
+      },
+    ],
     ['PageUp', (element: HTMLElement) => fireEvent.keyDown(element, { key: 'PageUp' })],
     ['Home', (element: HTMLElement) => fireEvent.keyDown(element, { key: 'Home' })],
     ['ArrowUp', (element: HTMLElement) => fireEvent.keyDown(element, { key: 'ArrowUp' })],
+    ['Shift+Space', (element: HTMLElement) => fireEvent.keyDown(element, { key: ' ', shiftKey: true })],
     ['a press on the scrollbar', (element: HTMLElement) => fireEvent.pointerDown(element)],
   ])('%s takes over from the pin', (_name, interact) => {
     const state = growable();
@@ -197,6 +237,124 @@ describe('staying at the bottom while the content settles', () => {
     state.lastHeight = 350;
     resize.fire();
     expect(scroller.scrollTop).toBe(BOTTOM_OF_200);
+  });
+
+  it.each([
+    ['a wheel down', (element: HTMLElement) => fireEvent.wheel(element, { deltaY: 40 })],
+    ['a zoom (ctrl + wheel)', (element: HTMLElement) => fireEvent.wheel(element, { deltaY: -40, ctrlKey: true })],
+    [
+      'a touch drag up',
+      (element: HTMLElement) => {
+        touch('touchStart', element, 140);
+        touch('touchMove', element, 100);
+      },
+    ],
+    ['End', (element: HTMLElement) => fireEvent.keyDown(element, { key: 'End' })],
+    ['PageDown', (element: HTMLElement) => fireEvent.keyDown(element, { key: 'PageDown' })],
+    ['ArrowDown', (element: HTMLElement) => fireEvent.keyDown(element, { key: 'ArrowDown' })],
+    ['Space', (element: HTMLElement) => fireEvent.keyDown(element, { key: ' ' })],
+    [
+      'a press on the scrollbar that is let go without moving',
+      (element: HTMLElement) => {
+        fireEvent.pointerDown(element);
+        fireEvent.pointerUp(element);
+      },
+    ],
+  ])('%s cannot take the list away from the bottom, so the pin holds', (_name, interact) => {
+    const state = growable();
+    const { scroller } = mount(loaded(newest()));
+    interact(scroller);
+    state.lastHeight = 350;
+    resize.fire();
+    expect(scroller.scrollTop).toBe(BOTTOM_OF_200 + 300);
+  });
+
+  it('a gesture on a list that fits (nothing above to scroll to) moves nothing and leaves the pin alone', () => {
+    const { scroller } = mount(loaded(messageRange(0, 5), { hasMore: false }));
+    expect(scroller.scrollTop).toBe(0);
+    fireEvent.wheel(scroller, { deltaY: -100 });
+    fireEvent.keyDown(scroller, { key: 'PageUp' });
+    fireEvent.pointerDown(scroller);
+    // the window gets shorter: the newest message has to stay in view
+    layout.restore();
+    layout = installFakeLayout({ viewportHeight: 200 });
+    resize.fire();
+    expect(scroller.scrollTop).toBe(layout.scrollHeight(scroller) - 200);
+    expect(scroller.scrollTop).toBeGreaterThan(0);
+  });
+
+  it('pins again once the user is back at the bottom, and keeps the newest messages in view from then on', () => {
+    const state = growable();
+    const { scroller } = mount(loaded(newest()));
+    fireEvent.wheel(scroller, { deltaY: -300 });
+    layout.userScrollTo(scroller, 5000);
+    state.lastHeight = 350;
+    resize.fire();
+    expect(scroller.scrollTop).toBe(5000); // away: left alone
+
+    layout.userScrollTo(scroller, layout.scrollHeight(scroller) - 600); // back (wheel, End, the scrollbar...)
+    state.lastHeight = 650;
+    resize.fire();
+    expect(scroller.scrollTop).toBe(layout.scrollHeight(scroller) - 600);
+  });
+
+  it('a user who moved up stays where they are while the layout changes under them', () => {
+    const wrap = { rowHeight: 50 };
+    layout.restore();
+    layout = installFakeLayout({
+      viewportHeight: 600,
+      nativeAnchoring: true,
+      heightOf: (element) => (element.hasAttribute('data-message-id') ? wrap.rowHeight : defaultHeightOf(element)),
+    });
+    const { scroller } = mount(loaded(newest()));
+    fireEvent.wheel(scroller, { deltaY: -300 });
+    layout.userScrollTo(scroller, 5000);
+    wrap.rowHeight = 60;
+    act(() => {
+      scroller.dispatchEvent(new Event('scroll')); // the anchoring of the browser
+    });
+    resize.fire();
+    expect(layout.scrollHeight(scroller) - layout.viewportHeight - scroller.scrollTop).toBeGreaterThan(1000);
+  });
+
+  it('a nudge of a few pixels that ends at the bottom is no move at all', () => {
+    const state = growable();
+    const { scroller } = mount(loaded(newest()));
+    fireEvent.wheel(scroller, { deltaY: -3 });
+    layout.userScrollTo(scroller, BOTTOM_OF_200 - 3);
+    state.lastHeight = 350;
+    resize.fire();
+    expect(scroller.scrollTop).toBe(BOTTOM_OF_200 + 300);
+  });
+
+  it('dragging the scrollbar away ends the pin even while rows change height under it', () => {
+    const state = growable();
+    const { scroller } = mount(loaded(newest()));
+    fireEvent.pointerDown(scroller);
+    layout.userScrollTo(scroller, 5000);
+    fireEvent.pointerUp(scroller);
+    state.lastHeight = 350;
+    resize.fire();
+    expect(scroller.scrollTop).toBe(5000);
+  });
+
+  it('End finishes the job when rows rendered taller on the way (the bottom moved), and pins the list again', () => {
+    vi.useFakeTimers();
+    const state = growable();
+    const { scroller } = mount(loaded(newest()));
+    layout.userScrollTo(scroller, 3000);
+    fireEvent.keyDown(scroller, { key: 'End' });
+    state.lastHeight = 150; // the rows on the way were taller than estimated: the bottom is 100px further down
+    layout.userScrollTo(scroller, BOTTOM_OF_200);
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(scroller.scrollTop).toBe(BOTTOM_OF_200 + 100);
+
+    fireEvent.scroll(scroller);
+    state.lastHeight = 250;
+    resize.fire();
+    expect(scroller.scrollTop).toBe(BOTTOM_OF_200 + 200);
   });
 
   it('keys and presses that do not scroll leave the pin alone', () => {
@@ -221,6 +379,58 @@ describe('staying at the bottom while the content settles', () => {
     resize.restore();
     const { scroller } = mount(loaded(newest()));
     expect(scroller.scrollTop).toBe(BOTTOM_OF_200);
+  });
+});
+
+describe('keyboard focus inside the list', () => {
+  const withLink = (): Message[] => [messageAt(200, { content: 'read https://example.com/old' }), ...messageRange(201, 400)];
+  const linkOf = (scroller: HTMLElement): HTMLAnchorElement => {
+    const link = scroller.querySelector('a');
+    if (link === null) throw new Error('no link');
+    return link;
+  };
+  const rectAt = (top: number): DOMRect => ({ top, bottom: top + 20 }) as DOMRect;
+
+  it('Tab to a link of an old message (far out of view) lets the pin go, so the scroll the browser makes is not undone', () => {
+    const state = growable();
+    const { scroller } = mount(loaded(withLink()));
+    const link = linkOf(scroller);
+    vi.spyOn(link, 'getBoundingClientRect').mockReturnValue(rectAt(-9000));
+    fireEvent.focusIn(link);
+    state.lastHeight = 350;
+    resize.fire();
+    expect(scroller.scrollTop).toBe(BOTTOM_OF_200); // not pulled back to the bottom
+  });
+
+  it('also when the browser has already scrolled by the time the event arrives (the link is in view again, the list is not at the bottom)', () => {
+    const state = growable();
+    const { scroller } = mount(loaded(withLink()));
+    const link = linkOf(scroller);
+    layout.setScrollTop(scroller, 0);
+    fireEvent.focusIn(link);
+    state.lastHeight = 350;
+    resize.fire();
+    expect(scroller.scrollTop).toBe(0);
+  });
+
+  it('a control that is already in view scrolls nothing and keeps the pin', () => {
+    const state = growable();
+    const { scroller } = mount(loaded(withLink()));
+    const link = linkOf(scroller);
+    vi.spyOn(link, 'getBoundingClientRect').mockReturnValue(rectAt(300));
+    fireEvent.focusIn(link);
+    state.lastHeight = 350;
+    resize.fire();
+    expect(scroller.scrollTop).toBe(BOTTOM_OF_200 + 300);
+  });
+
+  it('the list itself taking the focus (a click on it, the jump button) keeps the pin', () => {
+    const state = growable();
+    const { scroller } = mount(loaded(withLink()));
+    fireEvent.focusIn(scroller);
+    state.lastHeight = 350;
+    resize.fire();
+    expect(scroller.scrollTop).toBe(BOTTOM_OF_200 + 300);
   });
 });
 
@@ -624,6 +834,21 @@ describe('jump to latest', () => {
     expect(scroller.scrollTop).toBe(BOTTOM_OF_200);
     fireEvent.scroll(scroller);
     expect(button()).toBeNull();
+  });
+
+  it('pins the list again once it has arrived, so the newest messages stay in view', () => {
+    const scrollTo = vi.fn(function (this: HTMLElement, options: ScrollToOptions) {
+      this.scrollTop = options.top ?? 0;
+    });
+    HTMLElement.prototype.scrollTo = scrollTo as unknown as HTMLElement['scrollTo'];
+    const state = growable();
+    const { scroller } = mount(loaded(newest()));
+    layout.userScrollTo(scroller, 3000);
+    fireEvent.click(button() as HTMLElement);
+    fireEvent.scroll(scroller);
+    state.lastHeight = 350;
+    resize.fire();
+    expect(scroller.scrollTop).toBe(BOTTOM_OF_200 + 300);
   });
 
   it('hands the keyboard focus to the message list before it disappears (it would be dropped to <body> otherwise)', () => {

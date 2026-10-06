@@ -331,6 +331,19 @@ describe('export checkboxes', () => {
     expect(within(row).getByRole('button').getAttribute('title')).toBe('Alex Rivera - No access');
   });
 
+  it('the keyboard focus on the box of a conversation that answers 403 moves to its row instead of being dropped to <body>', async () => {
+    await bootApp();
+    render(<Sidebar />);
+    const alex = dmNamed('Alex Rivera');
+    const checkbox = screen.getByRole('checkbox', { name: 'Select Alex Rivera for export' });
+    act(() => checkbox.focus());
+    expect(document.activeElement).toBe(checkbox);
+
+    act(() => appStore.setState({ forbiddenChannels: { [alex.id]: true } }));
+    expect(within(rowOf('Alex Rivera')).queryByRole('checkbox')).toBeNull();
+    expect(document.activeElement).toBe(within(rowOf('Alex Rivera')).getByRole('button'));
+  });
+
   it('the checkboxes follow the store when the selection changes elsewhere', async () => {
     await bootApp();
     render(<Sidebar />);

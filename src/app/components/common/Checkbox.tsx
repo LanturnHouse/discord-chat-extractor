@@ -1,4 +1,4 @@
-import type { CSSProperties, KeyboardEvent, MouseEvent, ReactElement } from 'react';
+import { useLayoutEffect, useRef, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactElement, type RefObject } from 'react';
 import type { CheckState } from '../../state/types';
 import { Check, Minus } from './Icons';
 import './common.css';
@@ -26,6 +26,11 @@ export interface CheckboxProps {
    * Hidden until the row is hovered or focused, unless it is checked. The row must carry the `dce-reveal-host` class.
    */
   revealOnHover?: boolean;
+  /**
+   * Where the keyboard focus goes if this box is taken away (a channel turns out to be forbidden and loses its box) while it holds
+   * the focus: the browser would drop it to <body>, which sends a keyboard user back to the top of the page.
+   */
+  focusOnRemove?: RefObject<HTMLElement | null>;
   className?: string;
 }
 
@@ -49,8 +54,18 @@ export function Checkbox({
   invalid = false,
   title,
   revealOnHover = false,
+  focusOnRemove,
   className,
 }: CheckboxProps): ReactElement {
+  const box = useRef<HTMLButtonElement>(null);
+  // React runs this before it removes the button from the page, while it is still the focused element.
+  useLayoutEffect(() => {
+    const element = box.current;
+    return () => {
+      if (element !== null && document.activeElement === element) focusOnRemove?.current?.focus();
+    };
+  }, [focusOnRemove]);
+
   const classes = ['dce-checkbox'];
   if (revealOnHover) classes.push('dce-checkbox--reveal');
   if (className !== undefined) classes.push(className);
@@ -58,6 +73,7 @@ export function Checkbox({
 
   return (
     <button
+      ref={box}
       type="button"
       role="checkbox"
       aria-checked={state === 'some' ? 'mixed' : state === 'all'}
