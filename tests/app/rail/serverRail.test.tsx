@@ -487,6 +487,147 @@ describe('tooltip', () => {
     expect(screen.queryByRole('tooltip')).toBeNull();
   });
 
+  /** Rects by element: the rail is a window onto the icons, which sit wherever the test says. */
+  function stubLayout(layout: { rail: { top: number; height: number }; icon: () => { top: number; height: number } }): void {
+    const box = ({ top, height }: { top: number; height: number }): DOMRect => ({
+      x: 0,
+      y: top,
+      top,
+      right: 60,
+      bottom: top + height,
+      left: 12,
+      width: 48,
+      height,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return box(this.classList.contains('app-rail') ? layout.rail : layout.icon());
+    });
+  }
+
+  it('a keyboard-focused icon keeps its tooltip when the rail scrolls (focusing an icon out of view is what scrolls it) and the tooltip follows the icon', async () => {
+    await bootApp();
+    const state = { top: 600 }; // below the 500px high rail: focusing it makes the browser scroll
+    stubLayout({ rail: { top: 0, height: 500 }, icon: () => ({ top: state.top, height: 48 }) });
+    render(<ServerRail />);
+    act(() => guildButton(guilds()[0].name).focus());
+    expect(screen.getByRole('tooltip').style.top).toBe('624px');
+
+    state.top = 300;
+    fireEvent.scroll(rail());
+    expect(screen.getByRole('tooltip').textContent).toBe(guilds()[0].name);
+    expect(screen.getByRole('tooltip').style.top).toBe('324px');
+
+    // Scrolled out of the rail again (the wheel, while the icon still has the focus): nothing left to point at.
+    state.top = 700;
+    fireEvent.scroll(rail());
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
+  it('brings the focused icon into view first, so the tooltip is placed once, where it stays', async () => {
+    await bootApp();
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, writable: true, value: scrollIntoView });
+    try {
+      render(<ServerRail />);
+      act(() => guildButton(guilds()[2].name).focus());
+      expect(scrollIntoView.mock.contexts).toEqual([itemOf(guildButton(guilds()[2].name))]);
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+
+      // A hover does not scroll anything.
+      scrollIntoView.mockClear();
+      fireEvent.mouseEnter(itemOf(guildButton(guilds()[0].name)));
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    } finally {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+
+  it('a tooltip that follows the pointer still goes when the rail scrolls (the icon left from under it)', async () => {
+    await bootApp();
+    stubLayout({ rail: { top: 0, height: 500 }, icon: () => ({ top: 100, height: 48 }) });
+    render(<ServerRail />);
+    fireEvent.mouseEnter(itemOf(guildButton(guilds()[0].name)));
+    expect(screen.getByRole('tooltip')).toBeTruthy();
+    fireEvent.scroll(rail());
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
+  it('an unreadable tooltip is shifted back into the window: tall names near the top or bottom edge', async () => {
+    await bootApp();
+    const state = { top: 0, windowHeight: 300 };
+    stubLayout({ rail: { top: 0, height: 300 }, icon: () => ({ top: state.top, height: 48 }) });
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get: () => 88 }); // four lines
+    Object.defineProperty(document.documentElement, 'clientHeight', { configurable: true, get: () => state.windowHeight });
+    try {
+      render(<ServerRail />);
+      const shiftOf = (): string => screen.getByRole('tooltip').style.getPropertyValue('--tooltip-shift');
+      const name = guilds()[1].name;
+
+      // The icon's centre at 270 of 300: the box would run to 314, so it moves up by 22px (to 204..292, 8px from the edge).
+      state.top = 246;
+      fireEvent.mouseEnter(itemOf(guildButton(name)));
+      expect(shiftOf()).toBe('-22px');
+
+      // The icon's centre at 24: the box would start at -20, so it moves down by 28px (8px from the edge).
+      fireEvent.mouseLeave(itemOf(guildButton(name)));
+      state.top = 0;
+      fireEvent.mouseEnter(itemOf(guildButton(name)));
+      expect(shiftOf()).toBe('28px');
+
+      // In the middle of the window nothing moves.
+      fireEvent.mouseLeave(itemOf(guildButton(name)));
+      state.top = 100;
+      fireEvent.mouseEnter(itemOf(guildButton(name)));
+      expect(shiftOf()).toBe('0px');
+    } finally {
+      delete (HTMLElement.prototype as { offsetHeight?: unknown }).offsetHeight;
+      delete (document.documentElement as { clientHeight?: unknown }).clientHeight;
+    }
+  });
+
+  it('a tooltip that stays while the window changes height is shifted again for the new edges', async () => {
+    await bootApp();
+    const state = { windowHeight: 420 };
+    stubLayout({ rail: { top: 0, height: 420 }, icon: () => ({ top: 246, height: 48 }) });
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get: () => 88 }); // four lines
+    Object.defineProperty(document.documentElement, 'clientHeight', { configurable: true, get: () => state.windowHeight });
+    try {
+      render(<ServerRail />);
+      const tooltip = (): HTMLElement => screen.getByRole('tooltip');
+      fireEvent.mouseEnter(itemOf(guildButton(guilds()[1].name)));
+      // Centred on 270 of 420: 226..314 fits.
+      expect(tooltip().style.getPropertyValue('--tooltip-shift')).toBe('0px');
+
+      // The window gets shorter (300): the box would run to 314, so it moves up by 22px (to 204..292, 8px from the edge).
+      state.windowHeight = 300;
+      act(() => {
+        window.dispatchEvent(new Event('resize'));
+      });
+      expect(tooltip().style.getPropertyValue('--tooltip-shift')).toBe('-22px');
+
+      // Taller again: back where it was.
+      state.windowHeight = 420;
+      act(() => {
+        window.dispatchEvent(new Event('resize'));
+      });
+      expect(tooltip().style.getPropertyValue('--tooltip-shift')).toBe('0px');
+    } finally {
+      delete (HTMLElement.prototype as { offsetHeight?: unknown }).offsetHeight;
+      delete (document.documentElement as { clientHeight?: unknown }).clientHeight;
+    }
+  });
+
+  it('stops listening for window resizes when the tooltip goes', async () => {
+    await bootApp();
+    const remove = vi.spyOn(window, 'removeEventListener');
+    render(<ServerRail />);
+    fireEvent.mouseEnter(itemOf(guildButton(guilds()[0].name)));
+    fireEvent.mouseLeave(itemOf(guildButton(guilds()[0].name)));
+    expect(remove.mock.calls.some(([type]) => type === 'resize')).toBe(true);
+    remove.mockRestore();
+  });
+
   it('is removed from the document with the rail', async () => {
     await bootApp();
     const { unmount } = render(<ServerRail />);

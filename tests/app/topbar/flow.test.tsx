@@ -125,7 +125,8 @@ describe('select, pick TXT, press Download', () => {
     await setup([MOCK_IDS.forbiddenChannel]);
     chooseTxt();
     fireEvent.click(screen.getByRole('button', { name: /^Download/ }));
-    const done = await screen.findByRole('dialog', { name: 'Export complete' });
+    // Not "Export complete": nothing was exported.
+    const done = await screen.findByRole('dialog', { name: 'Nothing was exported' });
     expect(mocks.saveBlob).not.toHaveBeenCalled();
     expect(within(done).getByText('None of the selected channels could be exported.')).toBeTruthy();
     expect(within(done).getByText('Skipped, no access: 1')).toBeTruthy();

@@ -23,7 +23,7 @@ function DmAvatar({ dm }: { dm: DmNode }): ReactElement {
   return <SafeImg className="topbar__avatar" src={dm.iconUrl} alt="" width={AVATAR_SIZE} height={AVATAR_SIZE} fallback={fallback} />;
 }
 
-/** Left side of the top bar: the open channel (or the app name), and the channel topic on one line. */
+/** Left side of the top bar: the open channel (or the app name), and the channel topic on one line. The names are cut off with an ellipsis when long; the native tooltip has them in full. */
 export function ChannelTitle(): ReactElement {
   const active = useActiveChannel();
   const c = useStrings(common);
@@ -41,7 +41,9 @@ export function ChannelTitle(): ReactElement {
     return (
       <div className="topbar__title">
         <DmAvatar dm={active.dm} />
-        <h1 className="topbar__name">{active.dm.name}</h1>
+        <h1 className="topbar__name" title={active.dm.name}>
+          {active.dm.name}
+        </h1>
       </div>
     );
   }
@@ -55,12 +57,16 @@ export function ChannelTitle(): ReactElement {
       {parent === undefined ? null : (
         <>
           <ChannelKindIcon kind={parent.kind} className="topbar__icon" />
-          <span className="topbar__name topbar__name--parent">{parent.name}</span>
+          <span className="topbar__name topbar__name--parent" title={parent.name}>
+            {parent.name}
+          </span>
           <ChevronRight className="topbar__crumb-separator" />
         </>
       )}
       <ChannelKindIcon kind={node.kind} className="topbar__icon" />
-      <h1 className="topbar__name">{node.name}</h1>
+      <h1 className="topbar__name" title={node.name}>
+        {node.name}
+      </h1>
       {topic === '' ? null : (
         <>
           <span className="topbar__divider" aria-hidden="true" />

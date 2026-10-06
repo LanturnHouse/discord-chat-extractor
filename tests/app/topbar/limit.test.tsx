@@ -308,6 +308,134 @@ describe('a number that cannot be exported', () => {
     expect(limitInput().getAttribute('aria-invalid')).toBe('true');
   });
 
+  describe('unreadable text that is deleted again (QA-EXP-05)', () => {
+    /** What the control reports: while it holds text it cannot read ("1e") its value is '' and `validity.badInput` is true. */
+    function holding(input: HTMLInputElement): { text(readable: boolean): void } {
+      let bad = false;
+      Object.defineProperty(input, 'validity', { configurable: true, get: () => ({ badInput: bad }) });
+      return {
+        text(readable) {
+          bad = !readable;
+        },
+      };
+    }
+
+    it('an emptied field asks for the number, not for a whole number', async () => {
+      await start();
+      chooseLimitMode();
+      typeLimit('200');
+      const control = holding(limitInput());
+
+      // "1e" was typed over the 200: the value became '' (a change), the control says it holds text it cannot read.
+      control.text(false);
+      typeLimit('');
+      expect(alertText()).toBe('Use a whole number, without decimals.');
+
+      // Select all + Backspace: the value is still '' (so there is no change event), only the input event comes.
+      control.text(true);
+      fireEvent.input(limitInput());
+      expect(alertText()).toBe('Enter the number of messages.');
+      expect(limitInput().getAttribute('aria-invalid')).toBe('true');
+      expect(settings().limit).toBe(200);
+    });
+
+    it('a lone "e" typed into an empty field is unreadable, and deleting it makes the field empty again', async () => {
+      await start('ko');
+      chooseLimitMode();
+      typeLimit('');
+      expect(alertText()).toBe('메시지 개수를 입력하세요.');
+      const control = holding(limitInput());
+
+      control.text(false);
+      fireEvent.input(limitInput());
+      expect(alertText()).toBe('소수점 없이 정수로 입력하세요.');
+
+      control.text(true);
+      fireEvent.input(limitInput());
+      expect(alertText()).toBe('메시지 개수를 입력하세요.');
+    });
+
+    it('an input event that changes nothing is ignored', async () => {
+      await start();
+      chooseLimitMode();
+      typeLimit('0');
+      holding(limitInput());
+      fireEvent.input(limitInput());
+      expect(alertText()).toBe('Enter a number from 1 to 100,000.');
+      expect(limitInput().value).toBe('0');
+    });
+  });
+
+  it('the mouse wheel over the focused field leaves the number alone: the field is left, so Chrome does not step it (QA-EXP-04)', async () => {
+    await start();
+    chooseLimitMode();
+    typeLimit('100');
+    limitInput().focus();
+    expect(document.activeElement).toBe(limitInput());
+
+    fireEvent.wheel(limitInput(), { deltaY: -100 });
+    expect(document.activeElement).not.toBe(limitInput());
+    expect(limitInput().value).toBe('100');
+    expect(settings().limit).toBe(100);
+  });
+
+  describe('the message under an invalid number (QA-LAYOUT-09)', () => {
+    const scrollIntoView = vi.fn();
+    beforeEach(() => {
+      scrollIntoView.mockReset();
+      // jsdom has no layout and no such method.
+      Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, writable: true, value: scrollIntoView });
+    });
+    afterEach(() => {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    });
+
+    it('scrolls itself into view when it appears: the popover scrolls and the message can be below its fold', async () => {
+      await start();
+      chooseLimitMode();
+      scrollIntoView.mockClear();
+      typeLimit('200000');
+      const alert = screen.getByRole('alert');
+      expect(scrollIntoView.mock.contexts).toEqual([alert]);
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+    });
+
+    it('does it again when a refused Download reopens the options on it', async () => {
+      await start();
+      chooseLimitMode();
+      typeLimit('200000');
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+      expect(screen.queryByRole('dialog')).toBeNull();
+      scrollIntoView.mockClear();
+
+      fireEvent.click(main());
+      expect(scrollIntoView.mock.contexts).toEqual([screen.getByRole('alert')]);
+    });
+
+    it('is not asked to scroll while there is nothing to say, and says it again for a new message', async () => {
+      await start();
+      chooseLimitMode();
+      scrollIntoView.mockClear();
+      typeLimit('300');
+      expect(scrollIntoView).not.toHaveBeenCalled();
+
+      typeLimit('0');
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+      typeLimit('2.5');
+      expect(scrollIntoView).toHaveBeenCalledTimes(2);
+      typeLimit('3');
+      expect(scrollIntoView).toHaveBeenCalledTimes(2);
+    });
+
+    it('the date range message does it too', async () => {
+      await start();
+      scrollIntoView.mockClear();
+      fireEvent.change(dateInput('To'), { target: { value: '2026-10-03' } });
+      fireEvent.change(dateInput('From'), { target: { value: '2026-10-05' } });
+      expect(scrollIntoView.mock.contexts).toEqual([screen.getByRole('alert')]);
+    });
+  });
+
   it('the messages are in Korean too', async () => {
     await start('ko');
     chooseLimitMode();

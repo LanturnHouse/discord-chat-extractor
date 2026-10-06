@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import type { ReactElement } from 'react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { createRef, type ReactElement, type RefObject } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Button } from '@/app/components/common/Button';
 import { Checkbox } from '@/app/components/common/Checkbox';
@@ -83,6 +83,57 @@ describe('Checkbox', () => {
     expect(box.style.getPropertyValue('--dce-checkbox-size')).toBe('16px');
     expect(box.classList.contains('dce-checkbox--reveal')).toBe(true);
     expect(box.classList.contains('extra')).toBe(true);
+  });
+
+  describe('focusOnRemove', () => {
+    function mountWith(fallback: RefObject<HTMLButtonElement | null>): ReturnType<typeof render> {
+      return render(
+        <>
+          <button type="button" ref={fallback}>
+            row
+          </button>
+          <Checkbox state="none" onChange={() => undefined} ariaLabel="x" focusOnRemove={fallback} />
+        </>,
+      );
+    }
+
+    it('hands the keyboard focus to the given element when the focused box is removed (never to <body>)', () => {
+      const fallback = createRef<HTMLButtonElement>();
+      const { rerender } = mountWith(fallback);
+      const box = screen.getByRole('checkbox');
+      act(() => box.focus());
+      expect(document.activeElement).toBe(box);
+
+      rerender(
+        <button type="button" ref={fallback}>
+          row
+        </button>,
+      );
+      expect(screen.queryByRole('checkbox')).toBeNull();
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'row' }));
+    });
+
+    it('leaves the focus alone when the box is not the focused element', () => {
+      const fallback = createRef<HTMLButtonElement>();
+      const { rerender } = mountWith(fallback);
+      const other = document.createElement('input');
+      document.body.append(other);
+      other.focus();
+
+      rerender(
+        <button type="button" ref={fallback}>
+          row
+        </button>,
+      );
+      expect(document.activeElement).toBe(other);
+      other.remove();
+    });
+
+    it('does nothing without a target', () => {
+      const { unmount } = render(<Checkbox state="none" onChange={() => undefined} ariaLabel="x" />);
+      act(() => screen.getByRole('checkbox').focus());
+      expect(() => unmount()).not.toThrow();
+    });
   });
 });
 

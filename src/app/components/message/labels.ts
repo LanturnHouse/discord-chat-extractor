@@ -19,6 +19,8 @@ export interface MessageLabels {
   reaction: (label: string, count: number, me: boolean) => string;
   stickerFallback: string;
   openVideo: string;
+  /** Accessible name of a link that is only a picture: "Open example.com". */
+  openLink: (target: string) => string;
   pollSingle: string;
   pollMulti: string;
   pollVotes: (n: number) => string;
@@ -39,6 +41,7 @@ const en: MessageLabels = {
     `${label}, ${count} ${count === 1 ? 'reaction' : 'reactions'}${me ? ', including you' : ''}`,
   stickerFallback: 'Sticker',
   openVideo: 'Open video',
+  openLink: (target) => `Open ${target}`,
   pollSingle: 'Select one answer',
   pollMulti: 'Select one or more answers',
   pollVotes: (n) => `${n} ${n === 1 ? 'vote' : 'votes'}`,
@@ -58,6 +61,7 @@ const ko: MessageLabels = {
   reaction: (label, count, me) => `${label}, 반응 ${count}개${me ? ', 내가 반응함' : ''}`,
   stickerFallback: '스티커',
   openVideo: '영상 열기',
+  openLink: (target) => `${target} 열기`,
   pollSingle: '답변 하나를 선택하세요',
   pollMulti: '답변을 하나 이상 선택하세요',
   pollVotes: (n) => `${n}표`,

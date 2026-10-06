@@ -62,6 +62,7 @@ export function RadioGroup<T extends string>({ label, value, options, onChange, 
     <div role="radiogroup" aria-label={label} className={`topbar-radio topbar-radio--${variant}`} onKeyDown={onKeyDown}>
       {options.map((option, index) => {
         const checked = option.value === value;
+        const labelId = `${idPrefix}-${option.value}-label`;
         const descriptionId = option.description === undefined ? undefined : `${idPrefix}-${option.value}`;
         return (
           <button
@@ -72,13 +73,17 @@ export function RadioGroup<T extends string>({ label, value, options, onChange, 
             type="button"
             role="radio"
             aria-checked={checked}
+            // The description sits inside the button, so the name taken from its content would repeat what aria-describedby reads out.
+            aria-labelledby={descriptionId === undefined ? undefined : labelId}
             aria-describedby={descriptionId}
             tabIndex={checked ? 0 : -1}
             className="topbar-radio__option"
             onClick={() => choose(index)}
           >
             <span className="topbar-radio__text">
-              <span className="topbar-radio__label">{option.label}</span>
+              <span id={labelId} className="topbar-radio__label">
+                {option.label}
+              </span>
               {option.description === undefined ? null : (
                 <span id={descriptionId} className="topbar-radio__description">
                   {option.description}

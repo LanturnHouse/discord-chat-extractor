@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { common } from '@/app/i18n/common';
+import { THREADS_RETRY_INTERVAL_MS } from '@/app/state/trees';
 import { createAppStore } from '@/app/state/store';
 import { DiscordApiError } from '@/lib/discord/client';
 import { MOCK_IDS, MOCK_ME } from '@/lib/discord/mock';
@@ -134,6 +136,32 @@ describe('ensureGuildTree', () => {
     expect(spies.getGuildChannels).toHaveBeenCalledTimes(2);
   });
 
+  it('the error of a server that failed to load is said again in the new language when the language is switched (NEW-5)', async () => {
+    const { store, spies } = await bootDemo();
+    store.getState().setPrefs({ locale: 'en' });
+    spies.getGuildChannels.mockRejectedValueOnce(new DiscordApiError('unknown', 'Discord API error 403 for GET /guilds/1/channels', { status: 403 }));
+    await store.getState().ensureGuildTree(MOCK_IDS.bigGuild);
+    await store.getState().ensureGuildTree(MOCK_IDS.englishGuild);
+    expect(store.getState().trees[MOCK_IDS.bigGuild].error).toBe(common.en.errorBlocked(403));
+    const loaded = store.getState().trees[MOCK_IDS.englishGuild];
+
+    store.getState().setPrefs({ locale: 'ko' });
+    const failed = store.getState().trees[MOCK_IDS.bigGuild];
+    expect(failed.status).toBe('error');
+    expect(failed.error).toBe(common.ko.errorBlocked(403));
+    expect(store.getState().trees[MOCK_IDS.englishGuild]).toBe(loaded);
+
+    store.getState().setPrefs({ locale: 'en' });
+    expect(store.getState().trees[MOCK_IDS.bigGuild].error).toBe(common.en.errorBlocked(403));
+
+    // A successful retry leaves nothing of the failure behind.
+    await store.getState().ensureGuildTree(MOCK_IDS.bigGuild);
+    expect(store.getState().trees[MOCK_IDS.bigGuild].status).toBe('loaded');
+    store.getState().setPrefs({ locale: 'ko' });
+    expect(store.getState().trees[MOCK_IDS.bigGuild]).not.toHaveProperty('error');
+    expect(store.getState().trees[MOCK_IDS.bigGuild]).not.toHaveProperty('errorCause');
+  });
+
   it('an unknown server ends in the error state instead of throwing', async () => {
     const { store } = await bootDemo();
     await expect(store.getState().ensureGuildTree(MOCK_IDS.unknownGuild)).resolves.toBeUndefined();
@@ -184,5 +212,156 @@ describe('ensureGuildTree', () => {
 
     expect(store.getState().trees).toEqual({});
     expect(store.getState().guildNames).toEqual({});
+  });
+});
+
+describe('forum posts that Discord has not indexed yet (202)', () => {
+  const notIndexed = (): DiscordApiError =>
+    new DiscordApiError('unknown', 'Discord has not indexed this channel for search yet (HTTP 202); try again later.', {
+      status: 202,
+      code: 110000,
+      retryAfterMs: 1000,
+    });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Only `Date` is faked: promises and microtasks keep running. */
+  function clock(): { advance(ms: number): void } {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-06T12:00:00Z') });
+    return { advance: (ms) => vi.setSystemTime(Date.now() + ms) };
+  }
+
+  async function loadWithPendingPosts(): Promise<Awaited<ReturnType<typeof bootDemo>>> {
+    const booted = await bootDemo();
+    booted.spies.getActiveThreads.mockRejectedValueOnce(notIndexed());
+    await booted.store.getState().ensureGuildTree(MOCK_IDS.bigGuild);
+    return booted;
+  }
+
+  it('keeps the tree usable and marks its posts as pending instead of treating the empty list as final', async () => {
+    clock();
+    const { store } = await loadWithPendingPosts();
+    const entry = store.getState().trees[MOCK_IDS.bigGuild];
+    expect(entry.status).toBe('loaded');
+    expect(entry.tree?.byId[MOCK_IDS.generalChannel]).toBeDefined();
+    expect(entry.tree?.threadsByParent).toEqual({});
+    expect(entry.threadsPendingAt).toBe(Date.now());
+  });
+
+  it('every other failure of the lookup is final: nothing is marked pending, and nothing is asked again', async () => {
+    const time = clock();
+    for (const error of [new DiscordApiError('server', 'oops', { status: 503 }), new DiscordApiError('network', 'offline'), new DiscordApiError('unknown', 'bad', { status: 400 })]) {
+      const { store, spies } = await bootDemo();
+      spies.getActiveThreads.mockRejectedValueOnce(error);
+      await store.getState().ensureGuildTree(MOCK_IDS.bigGuild);
+      expect(store.getState().trees[MOCK_IDS.bigGuild].threadsPendingAt).toBeUndefined();
+
+      time.advance(10 * THREADS_RETRY_INTERVAL_MS);
+      await store.getState().openGuild(MOCK_IDS.bigGuild);
+      expect(spies.getActiveThreads).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('re-opening the server asks again, but never more often than every 30 seconds', async () => {
+    const time = clock();
+    const { store, spies } = await loadWithPendingPosts();
+    expect(spies.getActiveThreads).toHaveBeenCalledTimes(1);
+
+    time.advance(THREADS_RETRY_INTERVAL_MS - 1);
+    await store.getState().openGuild(MOCK_IDS.bigGuild);
+    await store.getState().ensureGuildTree(MOCK_IDS.bigGuild);
+    expect(spies.getActiveThreads).toHaveBeenCalledTimes(1);
+
+    time.advance(1);
+    await store.getState().openGuild(MOCK_IDS.bigGuild);
+    expect(spies.getActiveThreads).toHaveBeenCalledTimes(2);
+    // The mock answers now: the posts are there and the tree is final.
+    const entry = store.getState().trees[MOCK_IDS.bigGuild];
+    expect(entry.tree?.threadsByParent[MOCK_IDS.forumChannel].map((n) => n.id).sort()).toEqual([...MOCK_IDS.forumThreads].sort());
+    expect(entry.threadsPendingAt).toBeUndefined();
+    expect(store.getState().guildNames[MOCK_IDS.bigGuild].channels[MOCK_IDS.forumThreads[0]]).toBeTruthy();
+
+    time.advance(10 * THREADS_RETRY_INTERVAL_MS);
+    await store.getState().openGuild(MOCK_IDS.bigGuild);
+    expect(spies.getActiveThreads).toHaveBeenCalledTimes(2);
+  });
+
+  it('a retry that is answered with 202 again waits another 30 seconds', async () => {
+    const time = clock();
+    const { store, spies } = await loadWithPendingPosts();
+    spies.getActiveThreads.mockRejectedValueOnce(notIndexed());
+    time.advance(THREADS_RETRY_INTERVAL_MS);
+    await store.getState().openGuild(MOCK_IDS.bigGuild);
+    expect(spies.getActiveThreads).toHaveBeenCalledTimes(2);
+    expect(store.getState().trees[MOCK_IDS.bigGuild].threadsPendingAt).toBe(Date.now());
+
+    time.advance(THREADS_RETRY_INTERVAL_MS - 1);
+    await store.getState().openGuild(MOCK_IDS.bigGuild);
+    expect(spies.getActiveThreads).toHaveBeenCalledTimes(2);
+    time.advance(1);
+    await store.getState().openGuild(MOCK_IDS.bigGuild);
+    expect(spies.getActiveThreads).toHaveBeenCalledTimes(3);
+    expect(store.getState().trees[MOCK_IDS.bigGuild].threadsPendingAt).toBeUndefined();
+  });
+
+  it('the tree stays loaded while the lookup repeats, and one that fails leaves the old tree and the hold-off in place', async () => {
+    const time = clock();
+    const { store, spies } = await loadWithPendingPosts();
+    const before = store.getState().trees[MOCK_IDS.bigGuild].tree;
+    const seen: string[] = [];
+    const unsubscribe = store.subscribe((state) => seen.push(state.trees[MOCK_IDS.bigGuild].status));
+
+    spies.getGuildChannels.mockRejectedValueOnce(new DiscordApiError('network', 'offline'));
+    time.advance(THREADS_RETRY_INTERVAL_MS);
+    await store.getState().ensureGuildTree(MOCK_IDS.bigGuild);
+    unsubscribe();
+
+    const entry = store.getState().trees[MOCK_IDS.bigGuild];
+    expect(seen.every((status) => status === 'loaded')).toBe(true);
+    expect(entry.status).toBe('loaded');
+    expect(entry.tree).toBe(before);
+    expect(entry.error).toBeUndefined();
+    expect(entry.threadsPendingAt).toBe(Date.now());
+    await store.getState().ensureGuildTree(MOCK_IDS.bigGuild);
+    expect(spies.getGuildChannels).toHaveBeenCalledTimes(2);
+  });
+
+  it('concurrent calls share one retry', async () => {
+    const time = clock();
+    const { store, spies } = await loadWithPendingPosts();
+    time.advance(THREADS_RETRY_INTERVAL_MS);
+    const first = store.getState().ensureGuildTree(MOCK_IDS.bigGuild);
+    const second = store.getState().ensureGuildTree(MOCK_IDS.bigGuild);
+    expect(second).toBe(first);
+    await first;
+    expect(spies.getActiveThreads).toHaveBeenCalledTimes(2);
+  });
+
+  it('opening a channel does not repeat the lookup (it would only queue ahead of the messages)', async () => {
+    const time = clock();
+    const { store, spies } = await loadWithPendingPosts();
+    time.advance(THREADS_RETRY_INTERVAL_MS);
+    await store.getState().openChannel(MOCK_IDS.generalChannel, MOCK_IDS.bigGuild);
+    expect(spies.getActiveThreads).toHaveBeenCalledTimes(1);
+    expect(spies.getGuildChannels).toHaveBeenCalledTimes(1);
+  });
+
+  it('selecting the whole server asks again and then includes the posts that turned up', async () => {
+    const time = clock();
+    const { store } = await loadWithPendingPosts();
+    time.advance(THREADS_RETRY_INTERVAL_MS);
+    await store.getState().toggleGuild(MOCK_IDS.bigGuild);
+    for (const id of MOCK_IDS.forumThreads) expect(store.getState().selection[id]).toBeDefined();
+  });
+
+  it('a 401 during the retry sends the user to the onboarding screen', async () => {
+    const time = clock();
+    const { store, spies } = await loadWithPendingPosts();
+    spies.getGuildChannels.mockRejectedValueOnce(new DiscordApiError('auth', 'Unauthorized', { status: 401 }));
+    time.advance(THREADS_RETRY_INTERVAL_MS);
+    await store.getState().ensureGuildTree(MOCK_IDS.bigGuild);
+    expect(store.getState().status).toBe('needs-token');
   });
 });

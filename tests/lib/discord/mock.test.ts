@@ -81,6 +81,11 @@ describe('client basics', () => {
     expect(isSnowflake(MOCK_ME.id)).toBe(true);
   });
 
+  it('names the demo user the same in every UI language: "Connected as ..." must not show Korean in English mode', () => {
+    expect(MOCK_ME).toMatchObject({ global_name: 'Demo', username: 'Demo' });
+    expect(`${MOCK_ME.global_name}${MOCK_ME.username}`).toMatch(/^[A-Za-z]+$/);
+  });
+
   it('returns copies: mutating a result never changes later results', async () => {
     const client = fresh();
     const first = await client.getMessages(MOCK_IDS.generalChannel, { limit: 5 });
@@ -392,6 +397,17 @@ describe('getMessages conformance', () => {
     const error = await rejection(client.getMessages(MOCK_IDS.generalChannel, { before: 'not-a-number' }));
     expect(error.status).toBe(400);
     expect(error.kind).toBe('unknown');
+  });
+
+  it('refuses a cursor that does not fit 64 bits, like the real API, and accepts the largest one that does', async () => {
+    const tooBig = String(2n ** 64n);
+    for (const cursor of [{ before: tooBig }, { after: tooBig }, { before: '9'.repeat(20) }]) {
+      const error = await rejection(client.getMessages(MOCK_IDS.generalChannel, cursor));
+      expect(error).toMatchObject({ kind: 'unknown', status: 400 });
+    }
+    const largest = String(2n ** 64n - 1n);
+    expect(await client.getMessages(MOCK_IDS.generalChannel, { after: largest })).toEqual([]);
+    expect((await client.getMessages(MOCK_IDS.generalChannel, { before: largest, limit: 3 })).length).toBe(3);
   });
 
   it('paging backwards and forwards both reconstruct whole channels without duplicates or gaps', async () => {

@@ -1,4 +1,4 @@
-import { memo, type ReactElement } from 'react';
+import { memo, useRef, type ReactElement } from 'react';
 import { useStrings } from '@/app/i18n';
 import { useAppStore, useChannelCheck, useIsForbidden } from '@/app/state';
 import type { ChannelKind, ChannelNode } from '@/lib/discord/model';
@@ -55,6 +55,7 @@ export const ChannelRow = memo(function ChannelRow({ node, guildId, depth, expan
   const active = useAppStore((state) => state.activeChannelId === node.id);
   const check = useChannelCheck(node.id);
   const forbidden = useIsForbidden(node.id);
+  const main = useRef<HTMLButtonElement>(null);
 
   const container = isContainer(node);
   const locked = node.canView === false || forbidden;
@@ -69,6 +70,7 @@ export const ChannelRow = memo(function ChannelRow({ node, guildId, depth, expan
   return (
     <li className={classes.join(' ')} data-sb-row="">
       <button
+        ref={main}
         type="button"
         className="sb-row__main sb-channel__main"
         data-sb-nav=""
@@ -92,6 +94,8 @@ export const ChannelRow = memo(function ChannelRow({ node, guildId, depth, expan
           state={check}
           ariaLabel={t.selectForExport(node.name)}
           revealOnHover
+          // A 403 on this channel takes the box away: the focus stays in the row.
+          focusOnRemove={main}
           onChange={() => toggleChannel(node.id)}
         />
       ) : null}

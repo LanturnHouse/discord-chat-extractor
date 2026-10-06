@@ -1,4 +1,4 @@
-import { memo, useRef, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react';
+import { memo, useRef, type ReactElement } from 'react';
 import { Button } from '@/app/components/common/Button';
 import { ChevronDown } from '@/app/components/common/Icons';
 import { Spinner } from '@/app/components/common/Spinner';
@@ -14,9 +14,6 @@ import { useScrollAnchor } from './scrollAnchor';
 import { useMessageScroll } from './useMessageScroll';
 
 type ChatStrings = (typeof chatStrings)['ko'];
-
-/** Keys that scroll a focused container: the user took over from the automatic bottom pin. */
-const SCROLL_KEYS: ReadonlySet<string> = new Set(['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown', ' ']);
 
 interface MessageRowsProps {
   items: readonly Message[];
@@ -49,8 +46,8 @@ export interface MessageListProps {
 }
 
 /**
- * The scrollable messages of one channel. Mount it with `key={channelId}`: it starts at the bottom, remembers whether the
- * user took over scrolling, and pages older messages in on its own (see useMessageScroll / useScrollAnchor).
+ * The scrollable messages of one channel. Mount it with `key={channelId}`: it starts at the bottom, stays there until the
+ * user moves up (and again once they are back), and pages older messages in on its own (see useMessageScroll / useScrollAnchor).
  */
 export function MessageList({ channel, messages }: MessageListProps): ReactElement {
   const t = useStrings(chatStrings);
@@ -65,18 +62,11 @@ export function MessageList({ channel, messages }: MessageListProps): ReactEleme
   useScrollAnchor(scrollerRef, contentRef, items);
   const scroll = useMessageScroll({ scrollerRef, contentRef, channelId: channelIdOf(channel), messages });
 
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    if (SCROLL_KEYS.has(event.key)) scroll.onUserScroll();
-  };
   // The button disappears as soon as the bottom is reached; a keyboard user who pressed it would otherwise lose their place
   // (the browser drops the focus to <body>), so the focus moves to the list it scrolled.
   const jumpToLatest = (): void => {
     scroll.jumpToLatest();
     scrollerRef.current?.focus({ preventScroll: true });
-  };
-  // A press on the container itself (not on a row) can only be the scrollbar being grabbed.
-  const onPointerDown = (event: PointerEvent<HTMLDivElement>): void => {
-    if (event.target === event.currentTarget) scroll.onUserScroll();
   };
 
   return (
@@ -89,11 +79,7 @@ export function MessageList({ channel, messages }: MessageListProps): ReactEleme
         aria-label={listLabel(t, channel)}
         tabIndex={0}
         data-skip-target="messages"
-        onScroll={scroll.onScroll}
-        onWheel={scroll.onUserScroll}
-        onTouchMove={scroll.onUserScroll}
-        onKeyDown={onKeyDown}
-        onPointerDown={onPointerDown}
+        {...scroll.handlers}
       >
         {/* Zero height and sticky: shows progress / errors at the top of the viewport wherever it is, without moving a single row. */}
         <div className="chat-list__status">

@@ -3,6 +3,7 @@ import { useStrings } from '@/app/i18n';
 import { selectSelectedTargets, useAppStore, useSelectionCount } from '@/app/state';
 import { Download, DownloadCaret, SpinnerIcon } from '../common/Icons';
 import { ExportOptionsPopover } from './ExportOptionsPopover';
+import { ignoreKeyRepeat } from './focus';
 import { FORMAT_CHIPS } from './formats';
 import { useNumberFormat } from './hooks';
 import { Popover } from './Popover';
@@ -105,6 +106,7 @@ export function DownloadButton({ mainRef, onShowProgress }: DownloadButtonProps)
         data-unavailable={unavailable ? '' : undefined}
         data-running={running ? '' : undefined}
         onBlur={onSplitBlur}
+        onKeyDown={ignoreKeyRepeat}
       >
         <button
           ref={mainRef}

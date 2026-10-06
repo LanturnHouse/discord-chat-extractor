@@ -108,6 +108,7 @@ export function createMessageActions(ctx: StoreContext): MessageActions {
               hasMore: true,
               loadingOlder: false,
               error: describeError(error, get().locale),
+              errorCause: error,
             });
           }
         }
@@ -141,7 +142,7 @@ export function createMessageActions(ctx: StoreContext): MessageActions {
           if (isAbortError(error)) setMessages(ctx, channelId, { ...previous, loadingOlder: false });
           else if (isAuthError(error)) handleAuthFailure(ctx, 'expired');
           else if (isForbiddenError(error)) markForbidden(ctx, channelId);
-          else setMessages(ctx, channelId, { ...previous, loadingOlder: false, olderError: describeError(error, get().locale) });
+          else setMessages(ctx, channelId, { ...previous, loadingOlder: false, olderError: describeError(error, get().locale), olderErrorCause: error });
         }
       });
     },

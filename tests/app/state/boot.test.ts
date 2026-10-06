@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { common } from '@/app/i18n/common';
 import { DEFAULT_PREFS } from '@/app/platform/types';
 import { createAppStore } from '@/app/state/store';
 import { DiscordApiError } from '@/lib/discord/client';
@@ -94,11 +95,45 @@ describe('demo boot', () => {
     await store.getState().init();
 
     expect(store.getState().status).toBe('fatal');
-    expect(store.getState().fatalError).toBe('Could not reach Discord. Check your network connection.');
+    expect(store.getState().fatalError).toBe(common.en.errorNetwork);
+    expect(store.getState().fatalError).toContain('Could not reach Discord. Check your network connection.');
 
     await store.getState().retry();
     expect(store.getState().status).toBe('ready');
     expect(store.getState().fatalError).toBeNull();
+  });
+
+  it.each(['ko', 'en'] as const)('a non-API exception never puts its English text into the %s sentence; the detail is kept apart', async (locale) => {
+    const platform = createFakePlatform({ prefs: { ...DEFAULT_PREFS, locale } });
+    const store = createAppStore({
+      getPlatform: () => platform,
+      isMockRequested: () => true,
+      loadDemo: async () => {
+        throw new TypeError('Cannot read properties of undefined (reading "guilds") at https://discord.com/api/v9/users/@me?token=abc');
+      },
+    });
+    await store.getState().init();
+
+    const state = store.getState();
+    expect(state.status).toBe('fatal');
+    expect(state.fatalError).toBe(common[locale].errorUnknown);
+    expect(state.fatalError).not.toContain('Cannot read');
+    expect(state.fatalDetail).toContain('TypeError');
+    expect(state.fatalDetail).not.toContain('token=abc');
+  });
+
+  it('an API error keeps its localized sentence and has no technical detail', async () => {
+    const platform = createFakePlatform({ prefs: { ...DEFAULT_PREFS, locale: 'ko' } });
+    const store = createAppStore({
+      getPlatform: () => platform,
+      isMockRequested: () => true,
+      loadDemo: async () => {
+        throw new DiscordApiError('network', 'offline');
+      },
+    });
+    await store.getState().init();
+    expect(store.getState().fatalError).toBe(common.ko.errorNetwork);
+    expect(store.getState().fatalDetail).toBeNull();
   });
 
   it('retry() does nothing unless the boot failed', async () => {

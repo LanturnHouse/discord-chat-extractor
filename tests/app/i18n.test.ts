@@ -84,11 +84,94 @@ describe('describeError', () => {
     }
   });
 
-  it('keeps the detail of an unknown API error', () => {
-    expect(describeError(new DiscordApiError('unknown', 'Missing Permissions (code 50013)'), 'en')).toBe(
-      'An unknown error occurred. (Missing Permissions (code 50013))',
-    );
-    expect(describeError(new DiscordApiError('unknown', ''), 'en')).toBe(common.en.errorUnknown);
+  it('never shows the text of the error itself (it is English and carries the request path), whatever the kind and status', () => {
+    const raw =
+      'Discord API error 403 for GET /channels/304/messages (not a missing-permission error; this may be a temporary block, try again later)';
+    for (const locale of LOCALES) {
+      for (const error of [
+        new DiscordApiError('unknown', raw, { status: 403 }),
+        new DiscordApiError('unknown', 'Discord API error 400 for GET /channels/307/messages: Bad things', { status: 400, code: 50035 }),
+        new DiscordApiError('unknown', 'Discord returned an invalid JSON response.', { status: 200 }),
+        new DiscordApiError('unknown', 'Waiting for Discord was interrupted.'),
+        new DiscordApiError('server', 'Discord API error 503 for GET /channels/1/messages', { status: 503 }),
+      ]) {
+        const text = describeError(error, locale);
+        expect(text, `${locale}: ${error.message}`).not.toContain('/channels/');
+        expect(text).not.toContain('Discord API error');
+        expect(text).not.toContain('Bad things');
+        expect(text).not.toContain('interrupted');
+      }
+    }
+  });
+
+  it('an unknown error with an HTTP status says which one in a localised sentence', () => {
+    const blocked = new DiscordApiError('unknown', 'English text', { status: 403 });
+    expect(describeError(blocked, 'en')).toBe('Discord rejected the request (HTTP 403). This may be a temporary block - try again later.');
+    expect(describeError(blocked, 'ko')).toMatch(/^Discord가 요청을 거부했습니다 \(HTTP 403\)\. 일시적인 차단/);
+
+    const rejected = new DiscordApiError('unknown', 'English text', { status: 400 });
+    expect(describeError(rejected, 'en')).toBe('Discord rejected the request (HTTP 400).');
+    expect(describeError(rejected, 'ko')).toBe('Discord가 요청을 거부했습니다 (HTTP 400).');
+    expect(describeError(new DiscordApiError('unknown', 'x', { status: 429 }), 'en')).toContain('HTTP 429');
+
+    // An error that never reached Discord has no status to tell.
+    const unsent = new DiscordApiError('unknown', 'no status');
+    expect(describeError(unsent, 'en')).toBe(common.en.errorUnknown);
+    expect(describeError(unsent, 'ko')).toBe(common.ko.errorUnknown);
+  });
+
+  it('a 2xx answer that could not be read is "an unexpected answer", never a rejection (NEW-6)', () => {
+    for (const status of [200, 201, 204]) {
+      const unreadable = new DiscordApiError('unknown', 'Discord returned an invalid JSON response.', { status });
+      expect(describeError(unreadable, 'en'), String(status)).toBe('Discord sent an unexpected answer.');
+      expect(describeError(unreadable, 'ko'), String(status)).toBe(common.ko.errorUnexpected);
+      for (const locale of LOCALES) {
+        expect(describeError(unreadable, locale)).not.toMatch(/HTTP|reject|거부|accept|받아들/);
+        expect(describeError(unreadable, locale)).not.toBe(common[locale].errorUnknown);
+      }
+    }
+    // Statuses that are refusals keep their own sentences.
+    expect(describeError(new DiscordApiError('unknown', 'x', { status: 400 }), 'en')).toBe(common.en.errorRejected(400));
+    expect(describeError(new DiscordApiError('unknown', 'x', { status: 403 }), 'en')).toBe(common.en.errorBlocked(403));
+    expect(common.ko.errorUnexpected).toMatch(/[가-힣]/);
+  });
+
+  it('a thread search that is not indexed yet (202) is a "try again in a moment", not an unknown error', () => {
+    const notReady = new DiscordApiError('unknown', 'Discord has not indexed this channel for search yet (HTTP 202); try again later.', {
+      status: 202,
+      code: 110000,
+      retryAfterMs: 1000,
+    });
+    expect(describeError(notReady, 'en')).toBe(common.en.errorNotReady);
+    expect(describeError(notReady, 'ko')).toBe(common.ko.errorNotReady);
+    expect(common.en.errorNotReady).not.toBe(common.en.errorUnknown);
+  });
+
+  it('a long rate limit says how many minutes to wait, a short one just "in a moment"', () => {
+    const banned = new DiscordApiError('rate-limited', 'Discord rate limit: would have to wait 3600 s.', { retryAfterMs: 3_600_000 });
+    expect(describeError(banned, 'en')).toBe('Discord asked us to wait about 60 min before the next request. Try again after that.');
+    expect(describeError(banned, 'ko')).toBe('Discord에서 약 60분 동안 기다려 달라고 요청했습니다. 그 뒤에 다시 시도하세요.');
+    // Rounded up: 61 s is 2 minutes, never "1 minute" that is over before the client lets a request through.
+    expect(describeError(new DiscordApiError('rate-limited', 'x', { retryAfterMs: 61_000 }), 'en')).toContain('about 2 min');
+    expect(describeError(new DiscordApiError('rate-limited', 'x', { retryAfterMs: 59_900 }), 'en')).toBe(common.en.errorRateLimited);
+    expect(describeError(new DiscordApiError('rate-limited', 'x'), 'ko')).toBe(common.ko.errorRateLimited);
+  });
+
+  it('the network sentence also tells that the browser may be limiting requests for a moment', () => {
+    expect(describeError(new DiscordApiError('network', 'x'), 'en')).toMatch(/browser may also be limiting requests.*wait a minute/);
+    expect(describeError(new DiscordApiError('network', 'x'), 'ko')).toMatch(/브라우저가 일시적으로 요청을 제한.*1분/);
+  });
+
+  it('English sentences contain no Korean and the other way round', () => {
+    const errors = [
+      ...kinds.map((kind) => new DiscordApiError(kind, 'raw', { status: kind === 'unknown' ? 403 : undefined, retryAfterMs: kind === 'rate-limited' ? 600_000 : undefined })),
+      new DiscordApiError('unknown', 'raw', { status: 400 }),
+      new DiscordApiError('unknown', 'raw', { status: 202 }),
+    ];
+    for (const error of errors) {
+      expect(describeError(error, 'en')).not.toMatch(/[가-힣]/);
+      expect(describeError(error, 'ko')).toMatch(/[가-힣]/);
+    }
   });
 
   it('handles other errors and non-errors', () => {

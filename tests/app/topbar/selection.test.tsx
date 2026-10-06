@@ -261,6 +261,89 @@ describe('selection popover', () => {
     expect(document.activeElement).toBe(buttons()[1]);
   });
 
+  describe('a key held down (NEW-EXP-01)', () => {
+    /** What the browser does with Enter on a focused button: `keydown`, then (unless that was cancelled) a click on it, for the repeats of a held key too. */
+    function pressEnter(repeat = false): void {
+      const key = document.activeElement ?? document.body;
+      const proceed = fireEvent.keyDown(key, { key: 'Enter', repeat });
+      if (proceed && key instanceof HTMLButtonElement && !key.disabled) fireEvent.click(key);
+    }
+    const removeButtons = (): HTMLElement[] => within(popover()).getAllByRole('button', { name: /^Remove / });
+
+    it('Enter held on an x removes one chat: the repeats land on the next x, which they do not press', async () => {
+      await bootWithSelection();
+      render(<TopBar />);
+      fireEvent.click(chip());
+      removeButtons()[0].focus();
+
+      pressEnter();
+      expect(selectionCount()).toBe(3);
+      expect(document.activeElement).toBe(removeButtons()[0]);
+      for (let repeats = 0; repeats < 6; repeats += 1) pressEnter(true);
+      expect(selectionCount()).toBe(3);
+
+      // A new press is a new decision.
+      pressEnter();
+      expect(selectionCount()).toBe(2);
+    });
+
+    it('Enter held on the chip opens the list; the repeats do not press the gear it focuses', async () => {
+      await bootWithSelection();
+      render(<TopBar />);
+      chip().focus();
+      pressEnter();
+      const gear = within(popover()).getAllByRole('button', { name: /^Export settings for / })[0];
+      expect(document.activeElement).toBe(gear);
+
+      for (let repeats = 0; repeats < 4; repeats += 1) pressEnter(true);
+      expect(gear.getAttribute('aria-expanded')).toBe('false');
+      expect(within(popover()).queryByRole('group', { name: /^Export settings for / })).toBeNull();
+
+      pressEnter();
+      expect(gear.getAttribute('aria-expanded')).toBe('true');
+    });
+
+    it('the x, the gear and "Clear all" ignore the repeats of Enter and Space, never of Tab', async () => {
+      await bootWithSelection();
+      render(<TopBar />);
+      fireEvent.click(chip());
+      const remove = removeButtons()[0];
+      const buttons = [remove, within(popover()).getAllByRole('button', { name: /^Export settings for / })[0], within(popover()).getByRole('button', { name: 'Clear all' })];
+      for (const button of buttons) {
+        button.focus();
+        const name = button.getAttribute('aria-label') ?? button.textContent ?? '';
+        expect(fireEvent.keyDown(button, { key: 'Enter', repeat: true }), name).toBe(false);
+        expect(fireEvent.keyDown(button, { key: ' ', repeat: true }), name).toBe(false);
+        expect(fireEvent.keyDown(button, { key: 'Enter' }), name).toBe(true);
+      }
+      // Tab keeps repeating (and wraps at the end of the list, which is the popover's own business).
+      remove.focus();
+      expect(fireEvent.keyDown(remove, { key: 'Tab', repeat: true })).toBe(true);
+      expect(selectionCount()).toBe(4);
+    });
+  });
+
+  it('a server name that the heading cuts off with an ellipsis is its tooltip; Direct Messages needs none (V-LAYOUT-07)', async () => {
+    await bootTopBar();
+    const longName = 'The Extremely Long Server Name That Keeps Going On And On Until It Cannot Possibly Fit In The List';
+    const base = { kind: 'text', categoryName: null, parentChannelName: null, topic: null } as const;
+    act(() =>
+      appStore.setState({
+        selection: {
+          a: { ...base, channelId: 'a', channelName: 'general', guildId: 'g', guildName: longName },
+          b: { ...base, channelId: 'b', channelName: 'friend', guildId: null, guildName: null },
+        },
+      }),
+    );
+    render(<TopBar />);
+    fireEvent.click(chip());
+    const [server, direct] = within(popover()).getAllByRole('heading', { level: 3 });
+    expect(server.textContent).toBe(longName);
+    expect(server.getAttribute('title')).toBe(longName);
+    expect(direct.textContent).toBe('Direct Messages');
+    expect(direct.hasAttribute('title')).toBe(false);
+  });
+
   it('moves the focus into the popover when it opens', async () => {
     await bootWithSelection();
     render(<TopBar />);

@@ -5,7 +5,7 @@ import { formatFullTooltip, normalizeEmbed, type EmbedMediaView, type Normalized
 import { dateTimeAttr, headerTimestamp } from './format';
 import { MsgIcon } from './Icon';
 import { getMessageLabels } from './labels';
-import { EXTERNAL_LINK } from './links';
+import { EXTERNAL_LINK, linkHost } from './links';
 import { objectsOf } from './list';
 import { fitBox, MEDIA_MAX_HEIGHT, MEDIA_MAX_WIDTH } from './media';
 import { SafeImg } from './SafeImg';
@@ -39,11 +39,12 @@ interface EmbedPictureProps {
   play: boolean;
   maxWidth: number;
   maxHeight: number;
-  playLabel: string;
+  /** Accessible name of the link, for a picture whose own `alt` does not give it one. */
+  linkLabel?: string;
 }
 
 /** Picture of an embed. When it fails to load the whole block disappears instead of leaving a broken-image icon. */
-function EmbedPicture({ media, className, alt, href, play, maxWidth, maxHeight, playLabel }: EmbedPictureProps) {
+function EmbedPicture({ media, className, alt, href, play, maxWidth, maxHeight, linkLabel }: EmbedPictureProps) {
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   if (failedSrc === media.url) return null;
   const box = fitBox(media.width, media.height, maxWidth, maxHeight);
@@ -66,7 +67,7 @@ function EmbedPicture({ media, className, alt, href, play, maxWidth, maxHeight, 
       {href === null ? (
         image
       ) : (
-        <a className="msg-embed__media-link" href={href} aria-label={play ? playLabel : undefined} {...EXTERNAL_LINK}>
+        <a className="msg-embed__media-link" href={href} aria-label={linkLabel} {...EXTERNAL_LINK}>
           {image}
           {play && (
             <span className="msg-embed__play" aria-hidden="true">
@@ -153,6 +154,13 @@ export function EmbedView({ embed, ctx }: EmbedViewProps) {
       </div>
     );
   } else if (mainImage !== null) {
+    // A picture is named by its alt text (the embed's title or provider); a bare picture embed has none, and its link must still
+    // have a name: the video label for a player that cannot be shown, else the site it leads to.
+    let linkLabel: string | undefined;
+    if (view.titleUrl !== null) {
+      if (kind === 'video') linkLabel = labels.openVideo;
+      else if (alt === '') linkLabel = labels.openLink(linkHost(view.titleUrl));
+    }
     media = (
       <EmbedPicture
         media={mainImage}
@@ -162,7 +170,7 @@ export function EmbedView({ embed, ctx }: EmbedViewProps) {
         play={kind === 'video'}
         maxWidth={MEDIA_MAX_WIDTH}
         maxHeight={MEDIA_MAX_HEIGHT}
-        playLabel={labels.openVideo}
+        linkLabel={linkLabel}
       />
     );
   }
@@ -234,7 +242,6 @@ export function EmbedView({ embed, ctx }: EmbedViewProps) {
               play={false}
               maxWidth={THUMBNAIL_BOX}
               maxHeight={THUMBNAIL_BOX}
-              playLabel={labels.openVideo}
             />
           )}
         </div>

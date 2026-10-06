@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { common } from '@/app/i18n/common';
 import { createAppStore } from '@/app/state/store';
 import { DiscordApiError } from '@/lib/discord/client';
 import { MOCK_IDS, MOCK_ME } from '@/lib/discord/mock';
@@ -305,7 +306,9 @@ describe('errors', () => {
       const state = booted.store.getState();
       const entry = state.messages[MOCK_IDS.edge200Channel];
       expect(entry.status).toBe('error');
-      expect(entry.error).toContain('temporary block');
+      // Built from the status only: the request path and the client's English text never reach the screen.
+      expect(entry.error).toBe(common.en.errorBlocked(403));
+      expect(entry.error).not.toContain('/channels/');
       expect(entry.error).not.toBe('You do not have access to this.');
       expect(state.forbiddenChannels[MOCK_IDS.edge200Channel]).toBeUndefined();
       expect(Object.keys(state.selection)).toEqual([MOCK_IDS.edge200Channel]);
@@ -317,14 +320,106 @@ describe('errors', () => {
 
     it('an older page that fails this way is a retryable error, not a lock either', async () => {
       const booted = await bootDemo();
+      booted.store.getState().setPrefs({ locale: 'ko' });
       await open(booted, MOCK_IDS.edge400Channel);
       booted.spies.getMessages.mockRejectedValueOnce(blocked());
       await booted.store.getState().loadOlderMessages(MOCK_IDS.edge400Channel);
 
       const state = booted.store.getState();
       expect(state.messages[MOCK_IDS.edge400Channel].status).toBe('loaded');
-      expect(state.messages[MOCK_IDS.edge400Channel].olderError).toContain('temporary block');
+      expect(state.messages[MOCK_IDS.edge400Channel].olderError).toBe(common.ko.errorBlocked(403));
       expect(state.forbiddenChannels[MOCK_IDS.edge400Channel]).toBeUndefined();
+    });
+  });
+
+  it('a rate limit that bans the client for a long time says how many minutes to wait (and keeps saying it on every retry)', async () => {
+    const booted = await bootDemo();
+    booted.store.getState().setPrefs({ locale: 'en' });
+    const banned = (waitMs: number): DiscordApiError => new DiscordApiError('rate-limited', `Discord rate limit: would have to wait ${waitMs / 1000} s.`, { retryAfterMs: waitMs });
+    booted.spies.getMessages.mockRejectedValueOnce(banned(3_600_000)).mockRejectedValueOnce(banned(3_540_000));
+    await open(booted, MOCK_IDS.edge200Channel);
+    expect(booted.store.getState().messages[MOCK_IDS.edge200Channel].error).toBe(common.en.errorRateLimitedWait(60));
+
+    // "Try again" while the ban lasts: the client refuses again, and the message tells how much is left.
+    await booted.store.getState().loadInitialMessages(MOCK_IDS.edge200Channel);
+    expect(booted.store.getState().messages[MOCK_IDS.edge200Channel].error).toBe(common.en.errorRateLimitedWait(59));
+    expect(booted.store.getState().messages[MOCK_IDS.edge200Channel].status).toBe('error');
+
+    // Once the client lets requests through again the same button works.
+    await booted.store.getState().loadInitialMessages(MOCK_IDS.edge200Channel);
+    expect(booted.store.getState().messages[MOCK_IDS.edge200Channel].status).toBe('loaded');
+  });
+
+  describe('a language switch while an error is on screen (NEW-5)', () => {
+    const blocked = (): DiscordApiError => new DiscordApiError('unknown', 'Discord API error 403 for GET /channels/1/messages', { status: 403, code: 40333 });
+    const banned = (): DiscordApiError => new DiscordApiError('rate-limited', 'Discord rate limit: would have to wait 3600 s.', { retryAfterMs: 3_600_000 });
+
+    it('says the sentence of the first page again in the new language, both ways, and keeps saying it on a retry', async () => {
+      const booted = await bootDemo();
+      const { store } = booted;
+      store.getState().setPrefs({ locale: 'en' });
+      booted.spies.getMessages.mockRejectedValueOnce(blocked());
+      await open(booted, MOCK_IDS.edge200Channel);
+      expect(store.getState().messages[MOCK_IDS.edge200Channel].error).toBe(common.en.errorBlocked(403));
+
+      store.getState().setPrefs({ locale: 'ko' });
+      let entry = store.getState().messages[MOCK_IDS.edge200Channel];
+      expect(entry.status).toBe('error');
+      expect(entry.error).toBe(common.ko.errorBlocked(403));
+      store.getState().setPrefs({ locale: 'en' });
+      expect(store.getState().messages[MOCK_IDS.edge200Channel].error).toBe(common.en.errorBlocked(403));
+
+      // The retry fails too, now in Korean: the sentence is made in the language of the moment, and follows the next switch.
+      store.getState().setPrefs({ locale: 'ko' });
+      booted.spies.getMessages.mockRejectedValueOnce(banned());
+      await store.getState().loadInitialMessages(MOCK_IDS.edge200Channel);
+      entry = store.getState().messages[MOCK_IDS.edge200Channel];
+      expect(entry.error).toBe(common.ko.errorRateLimitedWait(60));
+      store.getState().setPrefs({ locale: 'en' });
+      expect(store.getState().messages[MOCK_IDS.edge200Channel].error).toBe(common.en.errorRateLimitedWait(60));
+    });
+
+    it('does the same for the message of a failed older page, and leaves the messages themselves alone', async () => {
+      const booted = await bootDemo();
+      const { store } = booted;
+      store.getState().setPrefs({ locale: 'en' });
+      await open(booted, MOCK_IDS.edge400Channel);
+      booted.spies.getMessages.mockRejectedValueOnce(banned());
+      await store.getState().loadOlderMessages(MOCK_IDS.edge400Channel);
+      const before = store.getState().messages[MOCK_IDS.edge400Channel];
+      expect(before.olderError).toBe(common.en.errorRateLimitedWait(60));
+
+      store.getState().setPrefs({ locale: 'ko' });
+      const after = store.getState().messages[MOCK_IDS.edge400Channel];
+      expect(after.olderError).toBe(common.ko.errorRateLimitedWait(60));
+      expect(after.status).toBe('loaded');
+      expect(after.items).toBe(before.items);
+
+      // Retrying clears it for good: nothing of it comes back with a later switch.
+      await store.getState().loadOlderMessages(MOCK_IDS.edge400Channel);
+      expect(store.getState().messages[MOCK_IDS.edge400Channel].olderError).toBeUndefined();
+      store.getState().setPrefs({ locale: 'en' });
+      expect(store.getState().messages[MOCK_IDS.edge400Channel].olderError).toBeUndefined();
+      expect(store.getState().messages[MOCK_IDS.edge400Channel].items).toHaveLength(400);
+    });
+
+    it('touches only what holds an error: the entries of other channels stay the very same objects', async () => {
+      const booted = await bootDemo();
+      const { store } = booted;
+      store.getState().setPrefs({ locale: 'en' });
+      await open(booted, MOCK_IDS.edge400Channel);
+      booted.spies.getMessages.mockRejectedValueOnce(blocked());
+      await open(booted, MOCK_IDS.edge200Channel);
+      const healthy = store.getState().messages[MOCK_IDS.edge400Channel];
+
+      store.getState().setPrefs({ locale: 'ko' });
+      expect(store.getState().messages[MOCK_IDS.edge400Channel]).toBe(healthy);
+      expect(store.getState().messages[MOCK_IDS.edge200Channel].error).toBe(common.ko.errorBlocked(403));
+
+      // A preference that does not change the language changes no sentence either.
+      const messages = store.getState().messages;
+      store.getState().setPrefs({ exportFormat: 'csv' });
+      expect(store.getState().messages).toBe(messages);
     });
   });
 

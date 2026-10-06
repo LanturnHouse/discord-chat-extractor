@@ -824,6 +824,61 @@ describe('settings that cannot be exported', () => {
     expect(alerts('edge-199')).toEqual(['Enter a valid date.']);
   });
 
+  it('a date that is only half typed survives the list being closed by a press outside (QA-EXP-01): Download is refused at that row', async () => {
+    await start();
+    const startExport = spyOnStart();
+    openPanel('edge-199');
+    const field = dateIn('edge-199', 'From');
+    // The control holds "10/dd/yyyy": its value is '' and it reports bad input; no event said so before the press.
+    Object.defineProperty(field, 'validity', { configurable: true, value: { badInput: true } });
+    field.focus();
+
+    fireEvent.pointerDown(document.body);
+    expect(popoverOrNull()).toBeNull();
+    fireEvent.click(main());
+
+    expect(startExport).not.toHaveBeenCalled();
+    expect(alerts('edge-199')).toEqual(['Enter a valid date.']);
+    expect(dateIn('edge-199', 'From').getAttribute('aria-invalid')).toBe('true');
+    expect(gear('edge-199').hasAttribute('data-invalid')).toBe(true);
+    expect(appStore.getState().exportOverrides).toEqual({});
+  });
+
+  it('a half-typed date also survives Esc: first the panel closes, then the list, and Download is still refused at that row (QA-EXP-01)', async () => {
+    await start();
+    const startExport = spyOnStart();
+    openPanel('edge-199');
+    const field = dateIn('edge-199', 'To');
+    Object.defineProperty(field, 'validity', { configurable: true, value: { badInput: true } });
+    field.focus();
+
+    fireEvent.keyDown(field, { key: 'Escape' });
+    expect(panelOrNull('edge-199')).toBeNull();
+    expect(gear('edge-199').hasAttribute('data-invalid')).toBe(true);
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    expect(popoverOrNull()).toBeNull();
+
+    fireEvent.click(main());
+    expect(startExport).not.toHaveBeenCalled();
+    expect(alerts('edge-199')).toEqual(['Enter a valid date.']);
+  });
+
+  it('the message of a channel panel scrolls itself into view when it appears (QA-LAYOUT-09)', async () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, writable: true, value: scrollIntoView });
+    try {
+      await start();
+      openPanel('edge-199');
+      chooseLimitMode('edge-199');
+      typeLimit('edge-199', '200000');
+      const alert = within(panel('edge-199')).getByRole('alert');
+      expect(scrollIntoView.mock.contexts).toContain(alert);
+      expect(scrollIntoView).toHaveBeenLastCalledWith({ block: 'nearest' });
+    } finally {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+
   it('fixing it lets Download start', async () => {
     const startExport = await startWithBadLimit();
     typeLimit('edge-199', '30');
@@ -1044,6 +1099,69 @@ describe('input that cannot be exported while the channel still follows the comm
     expect(dateIn('edge-199', 'To').value).toBe('');
     expect(dateIn('edge-199', 'To').getAttribute('aria-invalid')).toBeNull();
     expect(gear('edge-199').hasAttribute('data-invalid')).toBe(false);
+  });
+
+  describe('a press on another control while a date is half typed (V-SEL-NEW-1, NEW-EXP-02)', () => {
+    /** The press of a mouse: the pointer goes down on the control, which takes the focus - the half-typed field is left. */
+    function press(target: HTMLElement): void {
+      fireEvent.pointerDown(target);
+      act(() => target.focus());
+    }
+
+    async function startHalfTyped(): Promise<HTMLInputElement> {
+      await start();
+      openPanel('edge-199');
+      const field = dateIn('edge-199', 'From');
+      Object.defineProperty(field, 'validity', { configurable: true, value: { badInput: true } });
+      expect(document.activeElement).toBe(field);
+      return field;
+    }
+
+    it('the row is flagged and the error shown when the pointer is up, not while it is down (they push the controls below away from it)', async () => {
+      await startHalfTyped();
+      const other = gear('general');
+      press(other);
+      expect(alerts('edge-199')).toEqual([]);
+      expect(summaryOf('edge-199')).toBeNull();
+      expect(resetLinkOrNull('edge-199')).toBeNull();
+      expect(gear('edge-199').hasAttribute('data-invalid')).toBe(false);
+
+      fireEvent.pointerUp(other);
+      expect(alerts('edge-199')).toEqual(['Enter a valid date.']);
+      expect(summaryOf('edge-199')).toBe('Check these settings');
+      expect(gear('edge-199').hasAttribute('data-invalid')).toBe(true);
+
+      // The click that follows reaches the gear that was pressed: its panel opens and the first one closes, flagged.
+      fireEvent.click(other);
+      expect(panelOrNull('edge-199')).toBeNull();
+      expect(panel('general')).toBeTruthy();
+      expect(gear('edge-199').hasAttribute('data-invalid')).toBe(true);
+      expect(summaryOf('edge-199')).toBe('Check these settings');
+    });
+
+    it('"Clear all" at the foot of the list is pressed the same way', async () => {
+      await startHalfTyped();
+      const clear = within(popover()).getByRole('button', { name: 'Clear all' });
+      press(clear);
+      expect(alerts('edge-199')).toEqual([]);
+      fireEvent.pointerUp(clear);
+      fireEvent.click(clear);
+      expect(Object.keys(appStore.getState().selection)).toEqual([]);
+      expect(popoverOrNull()).toBeNull();
+    });
+
+    it('a number typed into the count is flagged at once, as before: nothing waits for a press there', async () => {
+      await start();
+      openPanel('edge-199');
+      chooseLimitMode('edge-199');
+      typeLimit('edge-199', '0');
+      expect(alerts('edge-199')).toHaveLength(1);
+      const other = gear('general');
+      press(other);
+      expect(alerts('edge-199')).toHaveLength(1);
+      fireEvent.pointerUp(other);
+      expect(alerts('edge-199')).toHaveLength(1);
+    });
   });
 
   it('deselecting the channel drops the draft: nothing blocks Download, and the channel comes back clean', async () => {

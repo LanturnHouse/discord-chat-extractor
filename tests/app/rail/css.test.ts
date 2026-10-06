@@ -184,6 +184,12 @@ describe('server rail', () => {
     expect(arrow.get('border-color')).toBe('transparent var(--bg-floating) transparent transparent');
     expect(arrow.get('left')).toBe('-5px');
   });
+
+  it('tooltip: the shift that keeps a tall box inside the window (set by RailTooltip) moves the box and counter-moves the arrow, which stays on the box', () => {
+    expect(style(rail, '.rail-tooltip').get('transform')).toBe('translateY(calc(-50% + var(--tooltip-shift, 0px)))');
+    const arrowTop = style(rail, '.rail-tooltip::before').get('top');
+    expect(arrowTop).toBe('clamp(5px, calc(50% - 5px - var(--tooltip-shift, 0px)), calc(100% - 15px))');
+  });
 });
 
 describe('sidebar', () => {

@@ -18,8 +18,21 @@ export interface TooltipControls {
   /** Keyboard focus shows the tooltip; focus caused by a mouse press does not (the pointer is already showing it). */
   showForFocus(label: string, anchor: HTMLElement): void;
   hide(): void;
+  /**
+   * The rail scrolled. A tooltip that follows the pointer is hidden (the icon moved away from under it); one that belongs to
+   * the keyboard focus stays and follows its icon, because focusing an icon that was out of view is exactly what scrolls the
+   * rail. It goes when the icon has scrolled out of `rail`.
+   */
+  scrolled(rail: HTMLElement): void;
   /** Call on mouse down: the focus event that follows is not keyboard focus. */
   pointerDown(): void;
+}
+
+interface Shown {
+  label: string;
+  anchor: HTMLElement;
+  /** Shown for the keyboard focus (and not for the pointer). */
+  focus: boolean;
 }
 
 /**
@@ -29,25 +42,47 @@ export interface TooltipControls {
 export function useRailTooltip(): { placement: TooltipPlacement | null; controls: TooltipControls } {
   const [placement, setPlacement] = useState<TooltipPlacement | null>(null);
   const pointerFocus = useRef(false);
+  const shown = useRef<Shown | null>(null);
 
   const controls = useMemo<TooltipControls>(() => {
-    const show = (label: string, anchor: HTMLElement): void => {
+    const place = (label: string, anchor: HTMLElement): void => {
       const rect = anchor.getBoundingClientRect();
       const top = rect.top + rect.height / 2;
       const left = rect.right + TOOLTIP_GAP;
       setPlacement((current) => (current !== null && current.label === label && current.top === top && current.left === left ? current : { label, top, left }));
     };
+    const hide = (): void => {
+      shown.current = null;
+      setPlacement(null);
+    };
     return {
-      show,
+      show(label, anchor) {
+        shown.current = { label, anchor, focus: false };
+        place(label, anchor);
+      },
       showForFocus(label, anchor) {
         if (pointerFocus.current) {
           pointerFocus.current = false;
           return;
         }
-        show(label, anchor);
+        shown.current = { label, anchor, focus: true };
+        // The browser scrolls a focused icon into view right after this handler: do it first, so the tooltip is placed once, where it stays.
+        if (typeof anchor.scrollIntoView === 'function') anchor.scrollIntoView({ block: 'nearest' });
+        place(label, anchor);
       },
-      hide() {
-        setPlacement(null);
+      hide,
+      scrolled(rail) {
+        const current = shown.current;
+        if (current === null) return;
+        if (!current.focus || !current.anchor.isConnected) {
+          hide();
+          return;
+        }
+        const anchor = current.anchor.getBoundingClientRect();
+        const bounds = rail.getBoundingClientRect();
+        const centre = anchor.top + anchor.height / 2;
+        if (centre < bounds.top || centre > bounds.bottom) hide();
+        else place(current.label, current.anchor);
       },
       pointerDown() {
         pointerFocus.current = true;

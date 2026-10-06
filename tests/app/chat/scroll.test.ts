@@ -11,6 +11,8 @@ import {
   firstVisibleIndex,
   isNearBottom,
   isNearTop,
+  isOutsideView,
+  keyScrollsUp,
   prependedCount,
   shouldLoadOlder,
   shouldShowJumpToLatest,
@@ -84,27 +86,66 @@ describe('shouldShowJumpToLatest', () => {
 });
 
 describe('userScrolledAway', () => {
+  /** The list as our last pin left it: 5000px tall in a 600px viewport, at the bottom (4400). */
+  const pinned = metrics(4400, 5000, 600);
   const m = (scrollTop: number): ScrollMetrics => metrics(scrollTop, 5000, 600);
 
   it('is false while at the bottom', () => {
-    expect(userScrolledAway(m(4400), 4400)).toBe(false);
-    expect(userScrolledAway(m(4397), 4400)).toBe(false);
+    expect(userScrolledAway(m(4400), pinned)).toBe(false);
+    expect(userScrolledAway(m(4397), pinned)).toBe(false);
   });
 
-  it('is true when the list is away from the bottom and not where our pin left it', () => {
-    expect(userScrolledAway(m(4300), 4400)).toBe(true);
-    expect(userScrolledAway(m(0), 4400)).toBe(true);
+  it('is true when the list is away from the bottom, not where our pin left it, and was not re-laid-out', () => {
+    expect(userScrolledAway(m(4300), pinned)).toBe(true);
+    expect(userScrolledAway(m(0), pinned)).toBe(true);
   });
 
   it('ignores our own pin whose scroll event arrives after the content grew (the pin position is unchanged)', () => {
     // the content grew by 300px after the pin: the list is 300px from the new bottom, but scrollTop is still the pinned one
-    expect(userScrolledAway(metrics(4400, 5300, 600), 4400)).toBe(false);
-    expect(userScrolledAway(metrics(4402, 5300, 600), 4400)).toBe(false);
-    expect(userScrolledAway(metrics(4390, 5300, 600), 4400)).toBe(true);
+    expect(userScrolledAway(metrics(4400, 5300, 600), pinned)).toBe(false);
+    expect(userScrolledAway(metrics(4402, 5300, 600), pinned)).toBe(false);
   });
 
   it('ignores a browser correction that keeps the bottom (content above shrank)', () => {
-    expect(userScrolledAway(metrics(3900, 4500, 600), 4400)).toBe(false);
+    expect(userScrolledAway(metrics(3900, 4500, 600), pinned)).toBe(false);
+  });
+
+  it('ignores the scroll anchoring of a reflow: the layout changed since the pin, whichever way scrollTop moved', () => {
+    // a narrower window: the content got 750px taller and the browser moved scrollTop by 154px to keep its anchor row in place
+    const before = metrics(15_816, 16_568, 752);
+    expect(userScrolledAway(metrics(15_970, 17_318, 752), before)).toBe(false);
+    expect(userScrolledAway(metrics(4390, 5300, 600), pinned)).toBe(false);
+    // the viewport itself changed height (the window was resized)
+    expect(userScrolledAway(metrics(3000, 5000, 400), pinned)).toBe(false);
+    expect(userScrolledAway(metrics(3000, 5000, 800), pinned)).toBe(false);
+  });
+});
+
+describe('keyScrollsUp', () => {
+  it('is true for the keys that move towards older messages', () => {
+    for (const key of ['PageUp', 'Home', 'ArrowUp']) expect(keyScrollsUp(key, false), key).toBe(true);
+    expect(keyScrollsUp(' ', true)).toBe(true); // Shift+Space is a page up
+  });
+
+  it('is false for the keys that only move down, and for every other key', () => {
+    for (const key of ['PageDown', 'End', 'ArrowDown', 'Tab', 'a', 'Enter', 'Escape']) expect(keyScrollsUp(key, false), key).toBe(false);
+    expect(keyScrollsUp(' ', false)).toBe(false); // Space is a page down
+  });
+});
+
+describe('isOutsideView', () => {
+  const view = { top: 48, bottom: 900 };
+
+  it('is false for a box that is entirely inside (the edges count as inside)', () => {
+    expect(isOutsideView({ top: 300, bottom: 320 }, view)).toBe(false);
+    expect(isOutsideView({ top: 48, bottom: 900 }, view)).toBe(false);
+  });
+
+  it('is true when any part of the box is above or below: focusing it scrolls', () => {
+    expect(isOutsideView({ top: -13_626, bottom: -13_606 }, view)).toBe(true);
+    expect(isOutsideView({ top: 1200, bottom: 1220 }, view)).toBe(true);
+    expect(isOutsideView({ top: 40, bottom: 60 }, view)).toBe(true);
+    expect(isOutsideView({ top: 890, bottom: 910 }, view)).toBe(true);
   });
 });
 

@@ -148,6 +148,7 @@
   font-size: 14px;
   text-align: center;
   overflow-wrap: anywhere;
+  word-break: keep-all;
 }
 
 .sb-error {
@@ -169,6 +170,7 @@
   color: var(--text-normal);
   font-size: 14px;
   overflow-wrap: anywhere;
+  word-break: keep-all;
 }
 
 /* --- DM list heading ------------------------------------------------------------------------------------------- */
@@ -326,6 +328,12 @@
   color: var(--text-header);
 }
 
+/* The muted grey falls below 4.5:1 on the hover and selected tints of a row. */
+.sb-dm:hover .sb-dm__sub,
+.sb-dm.sb-row--active .sb-dm__sub {
+  color: var(--interactive-normal);
+}
+
 .sb-dm.sb-row--locked .sb-dm__main {
   opacity: 0.5;
 }
@@ -403,6 +411,19 @@
 }
 
 .sb-channel.sb-row--active .sb-channel__main {
+  color: var(--interactive-active);
+}
+
+/* The row's colour is the ICON's (--channel-icon is too dark for text: 3.7:1); the name has its own, in the same three states. */
+.sb-channel__name {
+  color: var(--text-muted);
+}
+
+.sb-channel:hover .sb-channel__name {
+  color: var(--text-normal);
+}
+
+.sb-channel.sb-row--active .sb-channel__name {
   color: var(--interactive-active);
 }
 

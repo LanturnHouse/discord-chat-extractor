@@ -104,6 +104,8 @@
    */
   content-visibility: auto;
   contain-intrinsic-size: auto 60px;
+  /* Paint containment clips at the edge of the row: this keeps the focus ring (2px wide, 2px off) of a link or picture at its very top or bottom. */
+  overflow-clip-margin: 4px;
 }
 
 .msg--first {
@@ -160,23 +162,26 @@
 }
 
 .msg-avatar-fallback--1 {
-  background-color: #747f8d;
+  background-color: #6a7585;
 }
 
+/* The light tones carry near-black initials: white on them is 1.99:1 to 3.1:1. Every pair is at least 4.5:1. */
 .msg-avatar-fallback--2 {
   background-color: #3ba55c;
+  color: #1e1f22;
 }
 
 .msg-avatar-fallback--3 {
   background-color: #faa61a;
+  color: #1e1f22;
 }
 
 .msg-avatar-fallback--4 {
-  background-color: #ed4245;
+  background-color: #d53b3e;
 }
 
 .msg-avatar-fallback--5 {
-  background-color: #eb459e;
+  background-color: #c93885;
 }
 
 .msg-gutter-time {
@@ -1026,6 +1031,17 @@ a.msg-embed__author-name:hover,
 .msg audio:focus-visible {
   outline: 2px solid var(--link, #00a8fc);
   outline-offset: 2px;
+}
+
+/*
+ * The picture and video frames clip whatever lies outside them (overflow: hidden also keeps the blur of a hidden spoiler inside),
+ * so the ring of what is in a frame is drawn inside it.
+ */
+.msg .msg-image-link:focus-visible,
+.msg .msg-image:focus-visible,
+.msg .msg-video:focus-visible,
+.msg .msg-spoiler-cover:focus-visible {
+  outline-offset: -2px;
 }
 
 @media (prefers-reduced-motion: reduce) {

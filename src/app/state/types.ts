@@ -35,6 +35,14 @@ export interface GuildTreeEntry {
   tree: GuildTree | null;
   /** Localised message when `status === 'error'`. */
   error?: string;
+  /** What `error` was made from: the sentence is made again from it when the language changes (see `relocalizeFailures`). */
+  errorCause?: unknown;
+  /**
+   * `Date.now()` of the last thread lookup that Discord answered with "not indexed yet": the tree is usable but has no forum posts
+   * (an empty list that is not the real answer). `ensureGuildTree` repeats the lookup for such a tree, at most once per
+   * `THREADS_RETRY_INTERVAL_MS`. Absent = the thread list is final.
+   */
+  threadsPendingAt?: number;
 }
 
 /** Id -> display name maps of one guild, used to render `<#channel>` and `<@&role>` mentions. */
@@ -54,8 +62,12 @@ export interface ChannelMessages {
   loadingOlder: boolean;
   /** Localised message when `status === 'error'` (first page failed). `loadInitialMessages` retries. */
   error?: string;
+  /** What `error` was made from (see `GuildTreeEntry.errorCause`). */
+  errorCause?: unknown;
   /** Localised message when the last "older page" request failed. Show a retry button: nothing retries automatically. */
   olderError?: string;
+  /** What `olderError` was made from (see `GuildTreeEntry.errorCause`). */
+  olderErrorCause?: unknown;
 }
 
 /** The default scope of every selected channel (what the three fields mean together is documented on `ExportScope`). Not persisted. */
@@ -124,6 +136,8 @@ export interface AppData {
   tokenDetected: boolean;
   /** Localised message while `status === 'fatal'`. */
   fatalError: string | null;
+  /** Scrubbed technical text of a non-API exception behind the fatal state (English; shown only inside a collapsed block). */
+  fatalDetail: string | null;
   /** The signed-in user (demo: the fictional one). */
   me: User | null;
   locale: Locale;
@@ -194,7 +208,11 @@ export interface AppActions {
   setDmFilter(text: string): void;
 
   // --- guild trees ---
-  /** Loads the server's channel tree once (idempotent, concurrent calls share one load). Never rejects; see `trees[id].status`. */
+  /**
+   * Loads the server's channel tree once (idempotent, concurrent calls share one load). Never rejects; see `trees[id].status`.
+   * A loaded tree whose thread lookup was answered with "not indexed yet" (`threadsPendingAt`) repeats that lookup, in the
+   * background (the tree stays loaded), at most once per `THREADS_RETRY_INTERVAL_MS`.
+   */
   ensureGuildTree(guildId: Snowflake): Promise<void>;
 
   // --- messages ---

@@ -26,16 +26,22 @@ const MAX_MESSAGE_LIMIT = 100;
 const MAX_ERROR_DETAIL_LENGTH = 200;
 /** Forum / media search answers at most 25 posts per request; a forum is followed for a few pages only (100 posts). */
 const MAX_THREAD_SEARCH_PAGES = 4;
-/** Total waits (shared by all forums of one `getActiveThreads` call) for a search index that is "not yet available". */
+/**
+ * Waits for a search index that is "not yet available", shared by all forums of one `getActiveThreads` call: at most this many,
+ * and at most `INDEX_WAIT_BUDGET_MS` in total. The caller (a server's tree load, a select-all) is held up for that time, so a
+ * longer wait is not sat through: the caller asks again later instead (it learns that from the rejection).
+ */
 const MAX_INDEX_WAITS = 2;
-const INDEX_RETRY_DEFAULT_MS = 3_000;
-const INDEX_RETRY_MAX_MS = 10_000;
+const INDEX_WAIT_BUDGET_MS = 3_000;
+const INDEX_RETRY_DEFAULT_MS = 1_000;
 /** Discord's `code` for "Index not yet available. Try again later" (HTTP 202 from the thread search). */
 const INDEX_NOT_READY_CODE = 110000;
 /** Discord error codes behind a 403 that really mean "this account may not read that" (Missing Access, Missing Permissions, verification level). */
 const NO_ACCESS_CODES: ReadonlySet<number> = new Set([50001, 50013, 50009]);
 const TOKEN_PATTERN = /^[\x21-\x7e]+$/;
 const ID_PATTERN = /^\d{1,25}$/;
+/** A run of this many digits is an id (the oldest snowflakes have 15 digits; wait times in seconds never get near 9). */
+const ID_IN_TEXT_PATTERN = /\d{9,}/g;
 
 export interface LiveDiscordClientOptions {
   /** The raw `Authorization` value. Resolved before every attempt (retries included) so a refreshed token is picked up. */
@@ -104,13 +110,11 @@ function kindOfStatus(status: number, code: number | undefined): DiscordApiError
   return 'unknown';
 }
 
-/** Discord's `{ message, code }` error body as a short string; '' when there is nothing useful. */
+/** The `message` of Discord's `{ message, code }` error body, on one line and capped; '' when there is nothing useful. */
 function describeErrorBody(body: unknown): string {
-  if (!isRecord(body)) return '';
-  const message = typeof body.message === 'string' ? body.message.replace(/\s+/g, ' ').trim() : '';
-  const code = typeof body.code === 'number' && body.code !== 0 ? ` (code ${body.code})` : '';
-  const text = message.length > MAX_ERROR_DETAIL_LENGTH ? `${message.slice(0, MAX_ERROR_DETAIL_LENGTH)}...` : message;
-  return `${text}${code}`.trim();
+  if (!isRecord(body) || typeof body.message !== 'string') return '';
+  const message = body.message.replace(/\s+/g, ' ').trim();
+  return message.length > MAX_ERROR_DETAIL_LENGTH ? `${message.slice(0, MAX_ERROR_DETAIL_LENGTH)}...` : message;
 }
 
 interface RequestOptions {
@@ -176,7 +180,7 @@ export class LiveDiscordClient implements DiscordClient {
 
   async getMe(signal?: AbortSignal): Promise<User> {
     const body = await this.get('/users/@me', undefined, signal);
-    if (!isRecord(body) || typeof body.id !== 'string') throw this.unexpected('/users/@me');
+    if (!isRecord(body) || typeof body.id !== 'string') throw this.unexpected('current user');
     return body as unknown as User;
   }
 
@@ -187,7 +191,7 @@ export class LiveDiscordClient implements DiscordClient {
     for (let page = 0; page < MAX_GUILD_PAGES; page++) {
       const query: Record<string, string> = { limit: String(GUILDS_PAGE_SIZE) };
       if (after !== undefined) query.after = after;
-      const items = this.expectArray(await this.get('/users/@me/guilds', query, signal), '/users/@me/guilds') as GuildSummary[];
+      const items = this.expectArray(await this.get('/users/@me/guilds', query, signal), 'guild list') as GuildSummary[];
       let added = 0;
       let lastId: Snowflake | undefined;
       for (const guild of items) {
@@ -234,10 +238,12 @@ export class LiveDiscordClient implements DiscordClient {
    *
    * Per forum / media channel the search follows `has_more` for at most `MAX_THREAD_SEARCH_PAGES` pages (100 most recently
    * active posts); a busier forum is truncated silently. Discord indexes a channel lazily: while it has not, the search
-   * answers HTTP 202 "Index not yet available" without any `threads`. That is waited out (the response's `retry_after`,
-   * bounded, at most `MAX_INDEX_WAITS` times per call) and retried instead of being mistaken for "no posts". If the index is
-   * still not ready and no thread at all could be listed, this REJECTS (status 202, code 110000, `retryAfterMs`) rather than
-   * resolve with [] so a caller can tell "not indexed yet" from "no threads" and must not remember the answer as final.
+   * answers HTTP 202 "Index not yet available" without any `threads`. A short `retry_after` is waited out and the page asked
+   * again, instead of being mistaken for "no posts"; the waits of one call are capped (`MAX_INDEX_WAITS` of them, `INDEX_WAIT_BUDGET_MS`
+   * in total) because the caller is blocked meanwhile, so this never takes much longer than that however slow Discord's index is.
+   * If the index is still not ready (or its `retry_after` is longer than the budget allows) and no thread at all could be listed,
+   * this REJECTS (status 202, code 110000, `retryAfterMs`) rather than resolve with [] so a caller can tell "not indexed yet" from
+   * "no threads", must not remember the answer as final and can ask again later.
    *
    * Threads are optional, so any other non-abort failure yields what was collected so far (usually `[]`). A forum the user
    * cannot open (403 "no access" / 404) is skipped; any other failure (wrong endpoint 400, rate limit, 5xx, network, a 403 that
@@ -258,6 +264,7 @@ export class LiveDiscordClient implements DiscordClient {
     const threads: Channel[] = [];
     const seen = new Set<Snowflake>();
     let indexWaits = 0;
+    let indexWaitedMs = 0;
     let notIndexed: DiscordApiError | null = null;
 
     forums: for (const parentId of parents) {
@@ -276,11 +283,14 @@ export class LiveDiscordClient implements DiscordClient {
           if (!(e instanceof DiscordApiError)) break forums;
           if (e.kind === 'aborted') throw e;
           if (e.status === 202) {
-            if (indexWaits < MAX_INDEX_WAITS) {
+            const waitMs = e.retryAfterMs ?? INDEX_RETRY_DEFAULT_MS;
+            // A wait that no longer fits is skipped, not shortened: asking before Discord's `retry_after` has passed only gets another 202.
+            if (indexWaits < MAX_INDEX_WAITS && indexWaitedMs + waitMs <= INDEX_WAIT_BUDGET_MS) {
               indexWaits++;
+              indexWaitedMs += waitMs;
               try {
                 // Outside the request queue on purpose: other requests (messages) are not held up while Discord indexes.
-                await this.pause(Math.min(e.retryAfterMs ?? INDEX_RETRY_DEFAULT_MS, INDEX_RETRY_MAX_MS), signal);
+                await this.pause(waitMs, signal);
               } catch (waitError) {
                 if (waitError instanceof DiscordApiError && waitError.kind === 'aborted') throw waitError;
                 break forums;
@@ -366,7 +376,7 @@ export class LiveDiscordClient implements DiscordClient {
   private get(path: string, query: Record<string, string> | undefined, signal: AbortSignal | undefined, opts: RequestOptions = {}): Promise<unknown> {
     const url = new URL(this.baseUrl + path);
     for (const [key, value] of Object.entries(query ?? {})) url.searchParams.set(key, value);
-    return this.queue.run(() => this.execute(path, url.href, signal, opts), signal);
+    return this.queue.run(() => this.execute(url.href, signal, opts), signal);
   }
 
   private expectArray(body: unknown, what: string): unknown[] {
@@ -375,17 +385,19 @@ export class LiveDiscordClient implements DiscordClient {
   }
 
   private unexpected(what: string): DiscordApiError {
-    return new DiscordApiError('unknown', `Discord returned an unexpected response for ${what}.`);
+    return new DiscordApiError('unknown', `Discord returned an unexpected response (${what}).`);
   }
 
-  private async execute(path: string, url: string, signal: AbortSignal | undefined, opts: RequestOptions): Promise<unknown> {
+  private async execute(url: string, signal: AbortSignal | undefined, opts: RequestOptions): Promise<unknown> {
     // Last line of defence for the credential: it only ever leaves with requests that stay inside the Discord API.
     if (!isTrustedApiUrl(url, this.baseUrl)) {
       throw new DiscordApiError('unknown', 'Refusing to send credentials to a URL outside the Discord API.');
     }
     // Every token this call has sent: error text must never contain any of them, even if Discord (or a proxy) echoed one back.
+    // Ids go too: a message has to be safe to paste into a bug report.
     const usedTokens: string[] = [];
-    const clean = (text: string): string => usedTokens.reduce((out, used) => out.split(used).join('[redacted]'), text);
+    const clean = (text: string): string =>
+      usedTokens.reduce((out, used) => out.split(used).join('[redacted]'), text).replace(ID_IN_TEXT_PATTERN, '<id>');
     const fail = (
       kind: DiscordApiError['kind'],
       message: string,
@@ -474,8 +486,10 @@ export class LiveDiscordClient implements DiscordClient {
       if (kind === 'auth') this.reportAuthError(opts, token);
       const detail = describeErrorBody(errorBody);
       // A refused 403 that is not a permission error (Cloudflare / anti-abuse block, unknown code) must not read like "no access".
-      const hint = res.status === 403 && kind === 'unknown' ? ' (not a missing-permission error; this may be a temporary block, try again later)' : '';
-      throw fail(kind, `Discord API error ${res.status} for GET ${path}${detail ? `: ${detail}` : ''}${hint}`, { status: res.status, code });
+      const hint = res.status === 403 && kind === 'unknown' ? ' (not a permission error; possibly a temporary block)' : '';
+      // Short English text for developers. The request path is left out on purpose (it holds ids): screens map `kind` / `status`.
+      const codeText = code === undefined ? '' : ` (code ${code})`;
+      throw fail(kind, `Discord API error ${res.status}${codeText}${detail ? `: ${detail}` : ''}${hint}`, { status: res.status, code });
     }
   }
 

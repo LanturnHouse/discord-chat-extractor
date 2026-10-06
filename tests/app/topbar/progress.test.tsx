@@ -383,6 +383,23 @@ describe('finished: done', () => {
     expect(dialog().querySelector('.topbar-summary')?.getAttribute('data-tone')).toBe('warning');
   });
 
+  it('with nothing exported the title does not say "complete" either (QA-EXP-07), in both languages', async () => {
+    const nothing = { fileCount: 0, messageCount: 0, filename: '', saved: false, failures: [skipped('9', 'x')] };
+    await doneDialog('en', nothing);
+    expect(screen.getByRole('dialog', { name: 'Nothing was exported' })).toBeTruthy();
+    expect(screen.queryByText('Export complete')).toBeNull();
+    cleanup();
+
+    await doneDialog('ko', nothing);
+    expect(screen.getByRole('dialog', { name: '내보낸 채널이 없어요' })).toBeTruthy();
+    expect(screen.queryByText('내보내기 완료')).toBeNull();
+  });
+
+  it('a run in which some channel failed but one was exported is still "complete"', async () => {
+    await doneDialog('en', { fileCount: 1, failures: [failed('7', 'Dev Lounge / flaky')] });
+    expect(screen.getByRole('dialog', { name: 'Export complete' })).toBeTruthy();
+  });
+
   it('says how many channels were never reached when the run stopped early (a long rate limit), next to the one failure that explains it', async () => {
     const stopped = 'Discord asked us to wait 12 min - try again later.';
     await bootTopBar();
@@ -506,6 +523,9 @@ describe('finished: cancelled', () => {
     await cancelledDialog({ output: pending({ fileCount: 1, filename: 'general.txt' }) });
     expect(within(dialog()).getByRole('button', { name: 'Save the 1 completed channel' })).toBeTruthy();
     expect(within(dialog()).getByText('1 channel was finished before you cancelled.')).toBeTruthy();
+    // "It", not "They" (QA-EXP-06).
+    expect(within(dialog()).getByText('It has not been saved yet. Closing without saving discards it.')).toBeTruthy();
+    expect(within(dialog()).queryByText(/^They have not/)).toBeNull();
   });
 
   it('the save button hands the file to the browser once, then the dialog confirms and offers only Close', async () => {
@@ -518,8 +538,9 @@ describe('finished: cancelled', () => {
     expect(within(dialog()).getByText('2 channels saved as Discord Export 2026-10-06.zip.')).toBeTruthy();
     expect(within(dialog()).queryByRole('button', { name: /^Save/ })).toBeNull();
     expect(within(dialog()).getAllByRole('button').map((button) => button.textContent)).toEqual(['Close']);
-    // The focus moved on to the remaining primary action instead of falling to <body>.
-    expect(document.activeElement).toBe(closeButton());
+    // The focus stays in the dialog instead of falling to <body>, on the dialog itself and not on Close: a key that is still down
+    // after the press on Save must not press the next button.
+    expect(document.activeElement).toBe(dialog());
   });
 
   it('a failed save stays visible and can be retried', async () => {
@@ -679,6 +700,7 @@ describe('finished: the automatic download failed (JOB-1)', () => {
     await failedDialog({ output: unsaved({ fileCount: 1, filename: 'general.txt' }) });
     expect(within(dialog()).getByText('1 channel was exported.')).toBeTruthy();
     expect(within(dialog()).getByRole('button', { name: 'Save the 1 completed channel' })).toBeTruthy();
+    expect(within(dialog()).getByText('It has not been saved yet. Closing without saving discards it.')).toBeTruthy();
   });
 
   it('Save hands the archive over, and the dialog turns into the normal success summary', async () => {
@@ -692,7 +714,7 @@ describe('finished: the automatic download failed (JOB-1)', () => {
     expect(within(dialog()).getByText('2 channels, 300 messages saved as Discord Export 2026-10-06.zip')).toBeTruthy();
     expect(within(dialog()).queryByRole('alert')).toBeNull();
     expect(within(dialog()).getAllByRole('button').map((button) => button.textContent)).toEqual(['Close']);
-    expect(document.activeElement).toBe(closeButton());
+    expect(document.activeElement).toBe(dialog());
   });
 
   it('a failing retry shows the new message, keeps the button and the archive, and the next try works', async () => {
@@ -770,6 +792,117 @@ describe('Cancel', () => {
     render(<TopBar />);
     expect(within(dialog()).queryByRole('button', { name: /Cancel/ })).toBeNull();
     expect(within(dialog()).queryByRole('button', { name: 'Hide' })).toBeNull();
+  });
+});
+
+describe('Enter on Cancel, held down or pressed again (QA-EXP-02)', () => {
+  /** What the browser does with Enter on a focused button: `keydown`, then (unless that was cancelled) a click on it, for the repeats of a held key too. */
+  function pressEnter(repeat = false): void {
+    const key = document.activeElement ?? document.body;
+    const proceed = fireEvent.keyDown(key, { key: 'Enter', repeat });
+    if (proceed && key instanceof HTMLButtonElement && !key.disabled) fireEvent.click(key);
+  }
+
+  const download = (): HTMLElement => screen.getByRole('button', { name: /^Download|^Exporting/ });
+
+  async function spies(): Promise<{ startExport: ReturnType<typeof vi.fn>; saveExportOutput: ReturnType<typeof vi.fn>; cancelExport: ReturnType<typeof vi.fn> }> {
+    await bootTopBar();
+    select(MOCK_IDS.edge199Channel, MOCK_IDS.edge200Channel);
+    const startExport = vi.fn(async () => undefined);
+    const saveExportOutput = vi.fn();
+    // Cancelling ends the run at once, with six completed channels waiting for "Save".
+    const cancelExport = vi.fn(() => setJob(makeJob({ status: 'cancelled', output: output({ cancelled: true, saved: false, fileCount: 6, messageCount: 900 }) })));
+    act(() => appStore.setState({ startExport, saveExportOutput, cancelExport }));
+    return { startExport, saveExportOutput, cancelExport };
+  }
+
+  it('cancels once; the Enter that follows (a held key, or a second press) presses nothing: not Save, not Close, not Download', async () => {
+    const { startExport, saveExportOutput, cancelExport } = await spies();
+    setJob(makeJob({ progress: progress([target({ channelId: '1', label: 'a', status: 'done', fetched: 1, ratio: 1 }), target({ channelId: '2', label: 'b', status: 'fetching', ratio: 0.5 })]) }));
+    render(<TopBar />);
+    within(dialog()).getByRole('button', { name: 'Cancel' }).focus();
+
+    pressEnter();
+    expect(cancelExport).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('dialog', { name: 'Export cancelled' })).toBeTruthy();
+    expect(within(dialog()).getByRole('button', { name: 'Save the 6 completed channels' })).toBeTruthy();
+    expect(document.activeElement).toBe(dialog());
+
+    pressEnter(true);
+    pressEnter(true);
+    pressEnter();
+    expect(saveExportOutput).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: 'Export cancelled' })).toBeTruthy();
+    expect(startExport).not.toHaveBeenCalled();
+    expect(cancelExport).toHaveBeenCalledTimes(1);
+  });
+
+  it('a dialog that opens already finished still starts on its main action (only a button that disappears under the focus hands it to the dialog)', async () => {
+    await spies();
+    setJob(makeJob({ status: 'cancelled', output: output({ cancelled: true, saved: false, fileCount: 6 }) }));
+    render(<TopBar />);
+    expect(document.activeElement).toBe(within(dialog()).getByRole('button', { name: 'Save the 6 completed channels' }));
+  });
+
+  it('the buttons of the finished dialog are new buttons, not the running ones relabelled (the focus would stay on the relabelled Cancel)', async () => {
+    await bootTopBar();
+    setJob(makeJob({ progress: progress([target({ channelId: '1', label: 'a', status: 'fetching', ratio: 0.5 })]) }));
+    render(<TopBar />);
+    const cancel = within(dialog()).getByRole('button', { name: 'Cancel' });
+    cancel.focus();
+
+    setJob(makeJob({ status: 'cancelled', output: output({ cancelled: true, saved: false, fileCount: 2 }) }));
+    const buttons = within(dialog()).getAllByRole('button');
+    expect(buttons.map((button) => button.textContent)).toEqual(['Close', 'Save the 2 completed channels']);
+    expect(buttons).not.toContain(cancel);
+    expect(cancel.isConnected).toBe(false);
+  });
+
+  it('a key held down on Close does not start a new export through the Download button that gets the focus back', async () => {
+    const { startExport } = await spies();
+    setJob(makeJob({ status: 'done', output: output({ fileCount: 6 }) }));
+    render(<TopBar />);
+    expect(document.activeElement).toBe(closeButton());
+
+    pressEnter();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(download());
+    pressEnter(true);
+    pressEnter(true);
+    expect(startExport).not.toHaveBeenCalled();
+
+    // A new press is a new decision.
+    pressEnter();
+    expect(startExport).toHaveBeenCalledTimes(1);
+  });
+
+  it('the buttons of the dialog press once per key press as well: a repeat on Close does not close, one on Cancel does not cancel', async () => {
+    const { cancelExport } = await spies();
+    setJob(makeJob({ progress: progress([target({ channelId: '1', label: 'a', status: 'fetching', ratio: 0.5 })]) }));
+    render(<TopBar />);
+    for (const name of ['Hide', 'Cancel']) {
+      const button = within(dialog()).getByRole('button', { name });
+      button.focus();
+      expect(fireEvent.keyDown(button, { key: 'Enter', repeat: true }), name).toBe(false);
+    }
+    expect(cancelExport).not.toHaveBeenCalled();
+
+    setJob(makeJob({ status: 'done', output: output({ fileCount: 6 }) }));
+    expect(fireEvent.keyDown(closeButton(), { key: 'Enter', repeat: true })).toBe(false);
+    expect(fireEvent.keyDown(closeButton(), { key: 'Tab', repeat: true })).toBe(true);
+  });
+
+  it('the Download button ignores only the repeats of Enter and Space, never Tab', async () => {
+    await spies();
+    render(<TopBar />);
+    const caret = screen.getByRole('button', { name: 'Export options' });
+    for (const button of [download(), caret]) {
+      button.focus();
+      expect(fireEvent.keyDown(button, { key: 'Enter', repeat: true })).toBe(false);
+      expect(fireEvent.keyDown(button, { key: ' ', repeat: true })).toBe(false);
+      expect(fireEvent.keyDown(button, { key: 'Enter' })).toBe(true);
+      expect(fireEvent.keyDown(button, { key: 'Tab', repeat: true })).toBe(true);
+    }
   });
 });
 
@@ -890,11 +1023,12 @@ describe('focus handling', () => {
     expect(dialog().contains(document.activeElement)).toBe(true);
   });
 
-  it('moves the focus on when the focused button disappears because the job finished', async () => {
+  it('moves the focus to the dialog itself, not to a button, when the focused button disappears because the job finished', async () => {
     await running();
     within(dialog()).getByRole('button', { name: 'Cancel' }).focus();
     setJob(makeJob({ status: 'done', output: output() }));
-    expect(document.activeElement).toBe(closeButton());
+    expect(document.activeElement).toBe(dialog());
+    expect(within(dialog()).getByRole('button', { name: 'Close' })).toBeTruthy();
   });
 
   it('gives the focus back to the download button when the dialog is hidden or closed', async () => {

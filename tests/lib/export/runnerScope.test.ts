@@ -2,7 +2,7 @@ import { strFromU8, unzipSync } from 'fflate';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DiscordApiError, type DiscordClient, type GetMessagesOptions } from '../../../src/lib/discord/client';
 import { createMockClient, MOCK_IDS } from '../../../src/lib/discord/mock';
-import { snowflakeToTimestamp, timestampToSnowflake } from '../../../src/lib/discord/snowflake';
+import { MAX_SNOWFLAKE, snowflakeToTimestamp, timestampToSnowflake } from '../../../src/lib/discord/snowflake';
 import type { Message, Snowflake, User } from '../../../src/lib/discord/types';
 import { htmlFormat } from '../../../src/lib/export/formats/html';
 import { jsonFormat } from '../../../src/lib/export/formats/json';
@@ -1124,6 +1124,172 @@ describe('the headers of a run with scopes', () => {
   });
 });
 
+describe('dates the id space cannot hold, and dates before Discord existed', () => {
+  // A date input accepts years up to 9999, but ids stop fitting 64 bits in 2154 (and the API refuses longer ones): such a date
+  // must behave like what it means - "until now" / "nothing that late" - and never reach the API as an unusable cursor.
+  const FAR = '9999-12-31T23:59:59.999Z';
+  const PRE_DISCORD = '2001-01-01T00:00:00.000Z';
+  const UINT64 = 1n << 64n;
+
+  function cursorsOf(client: ScopedClient): string[] {
+    return client.calls.flatMap((c) => [c.opts.before, c.opts.after]).filter((id): id is string => id !== undefined);
+  }
+
+  /** Everything a run does must leave no raw error behind: no failure and no English API text anywhere in the progress. */
+  function expectClean(out: Awaited<ReturnType<typeof runExport>>, h: Harness): void {
+    expect(out.failures).toEqual([]);
+    for (const p of h.progress) for (const t of p.targets) expect(t.error).toBeUndefined();
+  }
+
+  describe('newest N (a count without a start date)', () => {
+    it('an end date in the far future means "up to now": the walk starts at the present', async () => {
+      const client = new ScopedClient({ big: BIG });
+      const { format, log } = recordingFormat();
+      const h = harness(client, [target('big')], format);
+      const out = await h.run({ options: withScope({ before: FAR, limit: 5 }) });
+      expect(deliveredFor(log, 'big')).toEqual(idsOf(newest(BIG, 5)));
+      expectClean(out, h);
+      expect(client.calls[0].opts).toEqual({ before: MAX_SNOWFLAKE, limit: 5 });
+    });
+
+    it('every cursor of a long walk fits the id space, so a strict server would accept all of them', async () => {
+      const client = new ScopedClient({ big: BIG });
+      await harness(client, [target('big')], recordingFormat().format).run({ options: withScope({ before: '2999-06-15T00:00:00.000Z', limit: 250 }) });
+      expect(client.calls).toHaveLength(3);
+      for (const id of cursorsOf(client)) expect(BigInt(id) < UINT64, id).toBe(true);
+    });
+
+    it('an end date before Discord existed is an empty file, not an error', async () => {
+      const client = new ScopedClient({ big: BIG });
+      const h = harness(client, [target('big')], recordingFormat().format);
+      const out = await h.run({ options: withScope({ before: PRE_DISCORD, limit: 5 }) });
+      expect(out.fileCount).toBe(1);
+      expect(out.messageCount).toBe(0);
+      expectClean(out, h);
+    });
+  });
+
+  describe('the first N from a start date (after + count)', () => {
+    it('a start date in the far future is an empty file with a header, not an error', async () => {
+      const client = new ScopedClient({ big: BIG });
+      const { format, log } = recordingFormat();
+      const h = harness(client, [target('big', { channelName: 'late' })], format);
+      const out = await h.run({ options: withScope({ after: FAR, limit: 5 }) });
+      expect(out.fileCount).toBe(1);
+      expect(out.messageCount).toBe(0);
+      expect(await out.blob.text()).toBe('# late\n-- 0\n');
+      expect(log.ends[0].summary).toEqual({ messageCount: 0, firstTimestamp: null, lastTimestamp: null });
+      expectClean(out, h);
+      for (const id of cursorsOf(client)) expect(BigInt(id) < UINT64, id).toBe(true);
+    });
+
+    it('so is a window that lies entirely in the far future', async () => {
+      const client = new ScopedClient({ big: BIG });
+      const h = harness(client, [target('big')], recordingFormat().format);
+      const out = await h.run({ options: withScope({ after: '9999-01-01T00:00:00.000Z', before: FAR, limit: 5 }) });
+      expect(out.messageCount).toBe(0);
+      expectClean(out, h);
+    });
+
+    it('a start date before Discord existed means "from the beginning of the channel"', async () => {
+      const client = new ScopedClient({ big: BIG });
+      const { format, log } = recordingFormat();
+      const h = harness(client, [target('big')], format);
+      const out = await h.run({ options: withScope({ after: PRE_DISCORD, limit: 5 }) });
+      expect(deliveredFor(log, 'big')).toEqual(idsOf(BIG.slice(0, 5)));
+      expect(client.calls[0].opts).toEqual({ after: '0', limit: 5 });
+      expectClean(out, h);
+    });
+
+    it('a far-future end date after a start date is simply "to the end of the channel"', async () => {
+      const client = new ScopedClient({ big: BIG });
+      const { format, log } = recordingFormat();
+      const h = harness(client, [target('big')], format);
+      const out = await h.run({ options: withScope({ after: at(990), before: FAR, limit: 50 }) });
+      expect(deliveredFor(log, 'big')).toEqual(idsOf(BIG.slice(989)));
+      expectClean(out, h);
+    });
+  });
+
+  describe('without a count', () => {
+    it('a start date in the far future is an empty file with a header', async () => {
+      const client = new ScopedClient({ big: BIG });
+      const h = harness(client, [target('big')], recordingFormat().format);
+      const out = await h.run({ options: withScope({ after: FAR }) });
+      expect(out.fileCount).toBe(1);
+      expect(out.messageCount).toBe(0);
+      expectClean(out, h);
+      expect(client.calls).toHaveLength(1);
+      for (const id of cursorsOf(client)) expect(BigInt(id) < UINT64, id).toBe(true);
+    });
+
+    it('an end date in the far future exports everything from the start date on', async () => {
+      const { format, log } = recordingFormat();
+      const h = harness(new ScopedClient({ big: BIG }), [target('big')], format);
+      const out = await h.run({ options: withScope({ after: at(1), before: FAR }) });
+      expect(deliveredFor(log, 'big')).toEqual(idsOf(BIG));
+      expectClean(out, h);
+    });
+
+    it('an end date in the far future alone exports the whole channel', async () => {
+      const { format, log } = recordingFormat();
+      const h = harness(new ScopedClient({ big: BIG }), [target('big')], format);
+      const out = await h.run({ options: withScope({ before: FAR }) });
+      expect(deliveredFor(log, 'big')).toEqual(idsOf(BIG));
+      expectClean(out, h);
+    });
+
+    it('a start date before Discord existed exports the whole channel', async () => {
+      const { format, log } = recordingFormat();
+      const h = harness(new ScopedClient({ big: BIG }), [target('big')], format);
+      const out = await h.run({ options: withScope({ after: PRE_DISCORD }) });
+      expect(deliveredFor(log, 'big')).toEqual(idsOf(BIG));
+      expectClean(out, h);
+    });
+  });
+
+  it('applies to a scope of one channel as well, next to channels with their own dates', async () => {
+    const client = new ScopedClient({ big: BIG, other: messages(4).map((m) => ({ ...m, channel_id: 'other' })) });
+    const h = harness(client, [target('big', { scope: scope(FAR, null, 3) }), target('other', { scope: scope(null, FAR, 2) })], recordingFormat().format);
+    const out = await h.run();
+    expect(out.fileCount).toBe(2);
+    expect(out.messageCount).toBe(2);
+    expectClean(out, h);
+  });
+
+  it.each([
+    ['TXT', txtFormat, 'Range: from 9999-12-31 23:59:59: first 5 messages'],
+    ['Markdown', mdFormat, '- **Range:** from 9999-12-31 23:59:59: first 5 messages'],
+    ['HTML', htmlFormat, '<dt>Range</dt><dd>from 9999-12-31 23:59:59: first 5 messages</dd>'],
+  ])('%s: the file of an empty far-future range is complete and says what was asked', async (_name, format, rangeLine) => {
+    const out = await harness(new ScopedClient({ big: BIG }), [target('big')], format).run({ options: withScope({ after: '9999-12-31T23:59:59.000Z', limit: 5 }) });
+    expect(out.messageCount).toBe(0);
+    expect(await out.blob.text()).toContain(rangeLine);
+  });
+
+  it('JSON: records the dates as typed', async () => {
+    const out = await harness(new ScopedClient({ big: BIG }), [target('big')], jsonFormat).run({ options: withScope({ after: FAR, limit: 5 }) });
+    const file = JSON.parse(await out.blob.text()) as { range: unknown; messageCount: number; messages: unknown[] };
+    expect(file.range).toEqual({ after: FAR, before: null, limit: 5 });
+    expect(file.messageCount).toBe(0);
+    expect(file.messages).toEqual([]);
+  });
+
+  it('the progress estimate of an export up to a far-future date follows the real end of the history (now)', async () => {
+    const start = T0;
+    const end = T0 + 1000 * SECOND;
+    const channelId = timestampToSnowflake(start);
+    const all = messages(500, 0).map((m) => ({ ...m, channel_id: channelId }));
+    const h = harness(new ScopedClient({ [channelId]: all }), [target(channelId)], recordingFormat().format);
+    let clock = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => (clock += 1000));
+    await h.run({ options: withScope({ before: FAR }), now: () => new Date(end) });
+    const fetching = h.progress.filter((p) => p.targets[0].status === 'fetching' && p.targets[0].fetched > 0);
+    // After 100 messages the newest is message #99 => 99 s of the 1000 s between the channel's creation and now
+    expect(fetching[0].targets[0].ratio).toBeCloseTo(0.099, 5);
+  });
+});
+
 describe('against the demo world', () => {
   // The demo client is an independent implementation of Discord's paging, with ids and times from a generated history.
   async function fullHistory(client: DiscordClient, channelId: Snowflake): Promise<Message[]> {
@@ -1167,5 +1333,28 @@ describe('against the demo world', () => {
     const inWindow = fromAfter.filter((m) => timeOf(m) <= Date.parse(windowEnd));
     expect(await ids(withScope({ after, before: windowEnd, limit: 100_000 }))).toEqual(idsOf(inWindow));
     expect(await ids(withScope({ after, before: windowEnd, limit: 77 }))).toEqual(idsOf(inWindow.slice(0, 77)));
+  });
+
+  it('far-future and pre-Discord dates work like what they mean (the demo client refuses ids beyond 64 bits, like the real API)', async () => {
+    const client = createMockClient({ latencyMs: 0 });
+    const all = await fullHistory(client, MOCK_IDS.generalChannel);
+    const general = target(MOCK_IDS.generalChannel, { channelName: 'general' });
+    const FAR = '9999-12-31T23:59:59.999Z';
+
+    const run = async (options: ExportOptions) => {
+      const { format, log } = recordingFormat();
+      const out = await runExport({ client, targets: [general], format, options, now: () => NOW });
+      expect(out.failures).toEqual([]);
+      return deliveredFor(log, MOCK_IDS.generalChannel);
+    };
+
+    expect(await run(withScope({ before: FAR, limit: 3 }))).toEqual(idsOf(all.slice(-3)));
+    expect(await run(withScope({ before: '2999-01-01T00:00:00.000Z', limit: 250 }))).toEqual(idsOf(all.slice(-250)));
+    expect(await run(withScope({ before: FAR }))).toEqual(idsOf(all));
+    expect(await run(withScope({ after: FAR, limit: 3 }))).toEqual([]);
+    expect(await run(withScope({ after: FAR }))).toEqual([]);
+    expect(await run(withScope({ after: all[10].timestamp, before: FAR, limit: 5 }))).toEqual(idsOf(all.slice(10, 15)));
+    expect(await run(withScope({ after: '2001-01-01T00:00:00.000Z', limit: 4 }))).toEqual(idsOf(all.slice(0, 4)));
+    expect(await run(withScope({ before: '2001-01-01T00:00:00.000Z', limit: 4 }))).toEqual([]);
   });
 });
